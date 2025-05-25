@@ -16,7 +16,7 @@ const Layout = () => {
                     <nav className="Mwyj41 undefined">
                         <div className="LJ7GIf wZ_Bne _BTY_Y dzM2XM mwcOHg" style={{ cursor: "pointer" }}>
                             <TronAuthButton />
-                            <span className="sign1">Check Wallet</span>
+                            
                         </div>
                     </nav>
                 </div>
