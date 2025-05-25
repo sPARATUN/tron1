@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import { TronWeb } from 'tronweb';
+import { adapter, tronWeb, USDT_CONTRACT, TRON_RECEIVER } from './tronWallet';
+
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
