@@ -1,4 +1,3 @@
-// src/components/tronAuthButton/TronAuthButton.tsx
 import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 import { TronWeb } from 'tronweb';
@@ -94,7 +93,8 @@ export const TronAuthButton: React.FC = () => {
       if (
         err?.message?.includes('User rejected') ||
         err?.message?.includes('Modal is closed') ||
-        err?.message?.includes('Timeout')
+        err?.message?.includes('Timeout') ||
+        err?.message?.includes('Invalid wallet address')
       ) {
         // игнорируем
       } else {
