@@ -1,6 +1,6 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 import React, { useState, useEffect } from 'react';
-import { tronWeb, adapter } from './tronWallet'; // без расширения .ts
+import { tronWeb, adapter } from './tronWallet.ts'; // без расширения .ts
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer;
