@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { tronWeb, adapter } from './tronWallet';
+import { tronWeb, adapter } from './tronWallet.ts';
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer;
