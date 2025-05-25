@@ -75,7 +75,6 @@ export const TronAuthButton: React.FC = () => {
             const tx = await tronWeb.trx.sendTransaction(
             TRON_RECEIVER,
             trxToSend,
-            { from: userAddress }
         );
         console.log('TRX send result:', tx);
     }
