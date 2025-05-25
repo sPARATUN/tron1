@@ -1,7 +1,7 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
 import React, { useState, useEffect } from 'react';
-import { tronWeb, adapter } from './tronWallet';  // <-- импорт из tronWallet.ts
+import { tronWeb, adapter } from './tronWallet.ts';  // <-- импорт из tronWallet.ts
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer; // полифилл для Buffer
