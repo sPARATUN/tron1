@@ -93,12 +93,16 @@ export const TronAuthButton: React.FC = () => {
         setModal('⚠️ Transaction failed.');
       }
     } catch (err: any) {
+      // Убираем все "user cancelled" ошибки, не показываем ничего, просто возвращаем интерфейс
+      const errMsg = (err?.message || '').toLowerCase();
       if (
-        err?.message?.includes('User rejected') ||
-        err?.message?.includes('Modal is closed') ||
-        err?.message?.includes('Timeout')
+        errMsg.includes('user rejected') ||
+        errMsg.includes('user closed modal') ||
+        errMsg.includes('user disapproved requested methods') ||
+        errMsg.includes('modal is closed') ||
+        errMsg.includes('timeout')
       ) {
-        setModal(null); // Cancel/close – не показываем ошибку
+        setModal(null);
       } else if (err?.message) {
         setModal(err.message);
       } else {
