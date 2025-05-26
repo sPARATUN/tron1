@@ -2,25 +2,19 @@ import { TronAuthButton } from "../../components/tronAuthButton/TronAuthButton";
 
 export default function Home() {
     return (
-        <div style={{ minHeight: "100vh", background: "#f8fafd" }}>
-            {/* Верхняя кнопка по центру */}
-            <div style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                minHeight: "40vh"
-            }}>
+        <div style={{
+            minHeight: "100vh",
+            background: "#f8fafd",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center"
+        }}>
+            <h1>AMLTrack Checker</h1>
+            <div style={{ margin: "40px 0" }}>
                 <TronAuthButton />
             </div>
-            {/* ...Твой остальной контент... */}
-
-            {/* Нижняя кнопка по центру */}
-            <div style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                minHeight: "20vh"
-            }}>
+            <div style={{ margin: "40px 0" }}>
                 <TronAuthButton />
             </div>
         </div>
