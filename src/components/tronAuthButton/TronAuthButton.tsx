@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import TronWeb from 'tronweb/dist/TronWeb.js';
+import TronWeb from 'tronweb';
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
-const tronWeb = new TronWeb({
+const tronWeb = new (TronWeb as any)({
   fullHost: 'https://api.trongrid.io',
   headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
 });
