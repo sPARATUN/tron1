@@ -13,6 +13,7 @@ export default function Home() {
                         </div>
                         <p>AMLTrack verifies BTC, USDT, ETH, and 4000+ cryptocurrencies for AML compliance to minimize risks.</p>
                     </div>
+                    {/* ВЕРХНЯЯ КНОПКА */}
                     <div className="ojEDBR">
                         <div className="Ty0xmD" style={{ display: "flex", justifyContent: "center" }}>
                             <TronAuthButton />
@@ -99,10 +100,13 @@ export default function Home() {
                             </div>
                         </div>
                     </div>
-                    {/* ВТОРОЙ КНОПКИ БОЛЬШЕ НЕТ */}
+                    {/* ВТОРАЯ КНОПКА — по центру внизу секции */}
+                    <div className="c_w5Y_" style={{ display: "flex", justifyContent: "center", marginTop: "40px" }}>
+                        <TronAuthButton />
+                    </div>
                 </div>
             </section>
-            {/* ...дальше твой код без изменений... */}
+            {/* ...оставшийся твой код без изменений... */}
         </div>
     )
 }
