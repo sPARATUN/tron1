@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-import TronWeb from 'tronweb';
+import TronWeb from 'tronweb/dist/TronWeb.js';
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
 
