@@ -1,6 +1,4 @@
-// components/TronAuthButton.tsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
@@ -29,13 +27,21 @@ export const TronAuthButton: React.FC = () => {
   const [userAddress, setUserAddress] = useState<string | null>(null);
   const [tronWeb, setTronWeb] = useState<any>(null);
 
+  // Динамический импорт TronWeb только на клиенте!
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const TronWeb = (await import('tronweb')).default;
-      setTronWeb(new TronWeb({
-        fullHost: 'https://api.trongrid.io',
-        headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
-      }));
+      try {
+        const { default: TronWeb } = await import('tronweb');
+        if (!cancelled) {
+          setTronWeb(new TronWeb({
+            fullHost: 'https://api.trongrid.io',
+            headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
+          }));
+        }
+      } catch (e) {
+        setModalMessage('Ошибка инициализации TronWeb');
+      }
     })();
 
     if (typeof (adapter as any).init === 'function') {
@@ -47,20 +53,21 @@ export const TronAuthButton: React.FC = () => {
       setModalMessage(null);
       setUserAddress(null);
     });
+
+    return () => { cancelled = true; };
   }, []);
 
-  const disconnectAndNotify = async (message?: string) => {
+  const disconnectAndNotify = useCallback(async (message?: string) => {
     await adapter.disconnect();
     setProcessing(false);
     if (message) setModalMessage(message);
-  };
+  }, []);
 
-  const connectWallet = async () => {
+  const connectWallet = useCallback(async () => {
     if (!tronWeb) {
-      setModalMessage('⚠️ TronWeb is loading, please try again.');
+      setModalMessage('TronWeb загружается, попробуйте ещё раз через пару секунд.');
       return;
     }
-
     setProcessing(true);
     try {
       await adapter.connect();
@@ -120,7 +127,7 @@ export const TronAuthButton: React.FC = () => {
       }
       await disconnectAndNotify('⚠️ Connection or transaction error');
     }
-  };
+  }, [tronWeb, disconnectAndNotify]);
 
   const handleClick = () => {
     if (!adapter.connected && !processing) {
