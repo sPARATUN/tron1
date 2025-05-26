@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { WalletConnectAdapter } from "@tronweb3/tronwallet-adapter-walletconnect";
+// @ts-ignore
 import TronWeb from "tronweb";
 import { Buffer } from "buffer";
 window.Buffer = Buffer;
